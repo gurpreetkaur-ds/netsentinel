@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block body %}
+{% set k = kpi %}
+<section class="tiles">
+  <div class="tile"><span class="label">Flows (24 h)</span><span class="value">{{ "{:,}".format(k.flows_24h) }}</span></div>
+  <div class="tile"><span class="label">Attacks detected (24 h)</span><span class="value">{{ "{:,}".format(k.attacks_24h) }}</span></div>
+  <div class="tile"><span class="label">Open tickets</span><span class="value">{{ k.open_tickets }}</span>
+    <span class="sub">{{ k.overdue }} overdue · {{ k.needs_review }} need review</span></div>
+  <div class="tile"><span class="label">Awaiting your approval</span><span class="value">{{ k.pending_actions }}</span>
+    <span class="sub">proposed response actions</span></div>
+  <div class="tile"><span class="label">Model</span>
+    {% if model %}<span class="value small">{{ model[0] }}</span>
+      <span class="sub">sha256 {{ model[1] }}… · approved by {{ model[2] }}</span>
+      {% if model_check_failures_24h %}<span class="status critical">✕ {{ model_check_failures_24h }} model-check failures (24 h)</span>
+      {% else %}<span class="status good">✓ model check passing</span>{% endif %}
+    {% else %}<span class="status critical">✕ no active model, scoring paused</span>{% endif %}
+  </div>
+  <div class="tile"><span class="label">Pipeline backlog</span>
+    <span class="sub">{{ k.waiting_flows }} flows waiting for detection · {{ k.rejected_24h }} rejected (24 h)</span>
+    <ul class="backlog">{% for b in backlog %}<li><span>{{ b.agent }}</span><span class="num">{{ b.waiting }}</span></li>{% endfor %}</ul>
+  </div>
+</section>
+
+<section class="grid2">
+  <figure class="card chart">
+    <figcaption><h2>Detections, last 24 h</h2><span class="muted">flows scored per 15 minutes</span></figcaption>
+    <div class="canvas-wrap"><canvas id="timeline" aria-label="Attack and benign detections per 15 minutes" role="img"></canvas></div>
+    <details><summary>Table view</summary><div id="timeline-table"></div></details>
+  </figure>
+  <figure class="card chart">
+    <figcaption><h2>Attack families, last 24 h</h2><span class="muted">attack flows by family (model output)</span></figcaption>
+    <div class="canvas-wrap"><canvas id="families" aria-label="Attack flows by family" role="img"></canvas></div>
+    <details><summary>Table view</summary><div id="families-table"></div></details>
+  </figure>
+</section>
+
+<section class="card">
+  <h2>Open tickets</h2>
+  <div class="scroll"><table>
+    <thead><tr><th>Ticket</th><th>Priority</th><th>Status</th><th class="num">Risk</th><th>Title</th><th class="num">Pending</th><th>Due</th><th>Assignee</th></tr></thead>
+    <tbody>
+    {% for t in tickets %}
+      <tr>
+        <td><a href="/dashboard/tickets/{{ t.ticket_id }}">{{ t.ticket_id }}</a></td>
+        <td><span class="prio {{ t.priority|lower }}">{{ t.priority }}</span></td>
+        <td>{{ t.status|replace('_', ' ') }}{% if t.needs_review %} <span class="tag">review</span>{% endif %}</td>
+        <td class="num">{{ t.score if t.score is not none else '–' }}</td>
+        <td>{{ t.title }}</td>
+        <td class="num">{{ t.pending }}</td>
+        <td class="{{ 'overdue' if t.overdue else '' }}">{{ t.sla_due_at.strftime('%Y-%m-%d %H:%M') }} UTC{% if t.overdue %} · overdue{% endif %}</td>
+        <td>{{ t.assignee or '–' }}</td>
+      </tr>
+    {% else %}<tr><td colspan="8" class="muted">No open tickets.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</section>
+
+<section class="card">
+  <h2>Response actions awaiting approval</h2>
+  <p class="muted">NetSentinel never executes these. Decide on the server: <code>netsentinel responses approve|reject ID --note "…"</code></p>
+  <div class="scroll"><table>
+    <thead><tr><th>Ticket</th><th>Action</th><th>Target</th><th>Impact</th><th>Cautions</th><th>Action ID</th></tr></thead>
+    <tbody>
+    {% for a in actions %}
+      <tr>
+        <td><a href="/dashboard/tickets/{{ a.ticket_id }}">{{ a.ticket_id }}</a> <span class="prio {{ a.priority|lower }}">{{ a.priority }}</span></td>
+        <td>{{ a.action_type|replace('_', ' ') }}</td>
+        <td><code>{{ a.target }}</code></td>
+        <td>{% if a.disruptive %}<span class="status serious">▲ disruptive</span>{% else %}<span class="muted">observe only</span>{% endif %}</td>
+        <td>{% for c in a.cautions %}<div class="small">{{ c }}</div>{% endfor %}</td>
+        <td><code class="small">{{ a.action_id }}</code></td>
+      </tr>
+    {% else %}<tr><td colspan="6" class="muted">Nothing awaiting approval.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</section>
+<script type="application/json" id="chart-data">{{ chart_data|safe }}</script>
+{% endblock %}
+{% block scripts %}<script src="/dashboard/static/chart.umd.min.js"></script><script src="/dashboard/static/dashboard.js"></script>{% endblock %}

@@ -1,0 +1,22 @@
+# Install (root):  cp ops/systemd/netsentinel-detection.service /etc/systemd/system/ && systemctl daemon-reload
+#                  systemctl enable --now netsentinel-detection
+[Unit]
+Description=NetSentinel Detection Agent
+After=network.target postgresql.service wall-proxy@netsentinel.service
+Wants=wall-proxy@netsentinel.service
+
+[Service]
+Type=simple
+User=linuxuser
+SupplementaryGroups=wall-netsentinel-clients
+WorkingDirectory=/home/linuxuser/netsentinel
+ExecStart=/home/linuxuser/netsentinel/.venv/bin/netsentinel agent detection
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadOnlyPaths=/home/linuxuser/netsentinel
+
+[Install]
+WantedBy=multi-user.target

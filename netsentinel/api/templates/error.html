@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} · NetSentinel{% endblock %}
+{% block body %}
+<section class="card login">
+  <h1>{{ title }}</h1>
+  <p class="error" role="alert">{{ message }}</p>
+  <p><a href="/dashboard">Dashboard</a></p>
+</section>
+{% endblock %}

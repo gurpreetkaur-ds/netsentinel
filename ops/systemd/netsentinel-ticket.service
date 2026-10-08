@@ -1,0 +1,22 @@
+# Install (root):  cp ops/systemd/netsentinel-ticket.service /etc/systemd/system/ && systemctl daemon-reload
+#                  systemctl enable --now netsentinel-ticket
+[Unit]
+Description=NetSentinel Ticket Agent
+After=network.target postgresql.service wall-proxy@netsentinel.service
+Wants=wall-proxy@netsentinel.service
+
+[Service]
+Type=simple
+User=linuxuser
+SupplementaryGroups=wall-netsentinel-clients
+WorkingDirectory=/home/linuxuser/netsentinel
+ExecStart=/home/linuxuser/netsentinel/.venv/bin/netsentinel agent ticket
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadOnlyPaths=/home/linuxuser/netsentinel
+
+[Install]
+WantedBy=multi-user.target

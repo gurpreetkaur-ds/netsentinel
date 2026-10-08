@@ -1,0 +1,24 @@
+# Install (root):  cp ops/systemd/netsentinel-investigation.service /etc/systemd/system/ && systemctl daemon-reload
+#                  systemctl enable --now netsentinel-investigation
+[Unit]
+Description=NetSentinel Investigation Agent
+After=network.target postgresql.service wall-proxy@netsentinel.service
+Wants=wall-proxy@netsentinel.service
+
+[Service]
+Type=simple
+User=linuxuser
+SupplementaryGroups=wall-netsentinel-clients
+WorkingDirectory=/home/linuxuser/netsentinel
+ExecStart=/home/linuxuser/netsentinel/.venv/bin/netsentinel agent investigation
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadOnlyPaths=/home/linuxuser/netsentinel
+# Claude keyless login keeps its session state here; nothing else is writable.
+ReadWritePaths=/home/linuxuser/.claude /home/linuxuser/.claude.json
+
+[Install]
+WantedBy=multi-user.target

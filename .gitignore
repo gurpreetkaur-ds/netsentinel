@@ -1,0 +1,19 @@
+# Data and environments are never committed
+.venv/
+data/
+artifacts/
+*.pkl
+*.joblib
+__pycache__/
+*.pyc
+.pytest_cache/
+# Secrets: NetSentinel reads credentials from the Security Wall at runtime; no secret files exist.
+.env
+.env.*
+*.cred
+*.pem
+*.key
+*.egg-info/
+
+# site-specific values (domain, server and owner IPs): never published
+config/site.json

@@ -1,0 +1,22 @@
+# Public, dashboard-only HTTPS listener. Installed by ops/systemd/enable-dashboard.sh.
+[Unit]
+Description=NetSentinel dashboard (HTTPS, dashboard-only)
+After=network.target postgresql.service wall-proxy@netsentinel.service
+Wants=wall-proxy@netsentinel.service
+
+[Service]
+Type=simple
+User=linuxuser
+SupplementaryGroups=wall-netsentinel-clients
+WorkingDirectory=/home/linuxuser/netsentinel
+ExecStart=/home/linuxuser/netsentinel/.venv/bin/netsentinel serve --dashboard-only --host 0.0.0.0 --port 8443 \
+    --tls-cert /home/linuxuser/.config/netsentinel/tls/cert.pem --tls-key /home/linuxuser/.config/netsentinel/tls/key.pem
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadOnlyPaths=/home/linuxuser/netsentinel /home/linuxuser/.config/netsentinel
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}{{ t.ticket_id }} · NetSentinel{% endblock %}
+{% block body %}
+<p><a href="/dashboard">← All tickets</a></p>
+<section class="card">
+  <h1>{{ t.ticket_id }} <span class="prio {{ t.priority|lower }}">{{ t.priority }}</span></h1>
+  <p class="lead">{{ t.title }}</p>
+  <p class="muted">Status {{ t.status|replace('_', ' ') }} · due {{ t.sla_due_at.strftime('%Y-%m-%d %H:%M') }} UTC · assignee {{ t.assignee or '–' }}
+  {% if t.needs_review %} · <span class="tag">review required</span>{% endif %}</p>
+  {% if can_decide and t.status != 'closed' %}
+  <details class="decide"><summary>Close this ticket</summary>
+    <form method="post" action="/dashboard/tickets/{{ t.ticket_id }}/close" class="decide-form" autocomplete="off">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label>Resolution (kept in the audit trail)<input name="note" required maxlength="500"></label>
+      <label>Confirm with your API key<input name="api_key" type="password" required autocomplete="off"></label>
+      <button type="submit">Close ticket</button>
+    </form>
+  </details>
+  {% endif %}
+</section>
+
+{% if risk %}
+<section class="card">
+  <h2>Risk assessment <span class="badge">RULES · {{ risk.rules_version }}</span></h2>
+  <p class="lead">{{ risk.score }}/100 · {{ risk.severity|upper }}</p>
+  {% for r in risk.review_reasons %}<p class="status warning">! {{ r }}</p>{% endfor %}
+  <table><thead><tr><th>Factor</th><th class="num">Points</th><th>Reason</th><th>Provenance</th></tr></thead><tbody>
+  {% for f in risk.factors %}<tr><td>{{ f.factor|replace('_', ' ') }}</td><td class="num">{{ f.points }}</td><td>{{ f.reason }}</td><td><span class="badge">{{ f.provenance }}</span></td></tr>{% endfor %}
+  </tbody></table>
+</section>
+{% endif %}
+
+{% if inv %}
+<section class="grid2">
+  <div class="card"><h2>Verified telemetry <span class="badge">VERIFIED TELEMETRY</span></h2><pre>{{ json(inv.telemetry) }}</pre></div>
+  <div class="card"><h2>Model output <span class="badge">MODEL OUTPUT</span></h2><pre>{{ json(inv.model_output) }}</pre></div>
+</section>
+<section class="card">
+  <h2>Investigation <span class="badge">LLM ANALYSIS</span></h2>
+  <p class="muted">{{ inv.llm_model or 'no model' }} · status {{ inv.llm_status }}. This is an opinion for the analyst: it does not change detections or risk.</p>
+  {% if inv.llm_status == 'guard_rejected' %}<p class="status critical">✕ Rejected by the guard: the analysis mentioned facts not in the evidence. Do not rely on it.</p>{% endif %}
+  {% for g in inv.guard_findings %}<p class="small muted">guard: {{ g.type }} - {{ g.value }} ({{ g.action }})</p>{% endfor %}
+  {% if inv.analysis %}
+    <p>{{ inv.analysis.summary }}</p>
+    {% set ma = inv.analysis.model_assessment %}
+    <p><strong>Telemetry vs model verdict:</strong> {{ ma.consistency|replace('_', ' ') }}. {{ ma.reasoning }}</p>
+    <h3>Observations</h3><ul>{% for o in inv.analysis.observations %}<li>{{ o.statement }} <span class="small muted">[{{ o.evidence_refs|join(', ') }}]</span>{% if o.unsupported %} <span class="tag">unsupported</span>{% endif %}</li>{% endfor %}</ul>
+    <h3>Hypotheses</h3><ul>{% for h in inv.analysis.hypotheses %}<li><span class="tag">{{ h.likelihood }}</span> {{ h.hypothesis }}</li>{% endfor %}</ul>
+    <h3>Data gaps</h3><ul>{% for d in inv.analysis.data_gaps %}<li>{{ d }}</li>{% endfor %}</ul>
+  {% endif %}
+  <h3>Investigative next steps <span class="badge">RECOMMENDATION</span></h3>
+  <ul>{% for s in (inv.recommendations or {}).get('next_steps', []) %}<li>{{ s }}</li>{% endfor %}</ul>
+</section>
+{% endif %}
+
+<section class="card">
+  <h2>Proposed response actions <span class="badge">RECOMMENDATION</span></h2>
+  <p class="muted">Never executed by NetSentinel. {% if can_decide %}Approve or reject below; each decision asks for
+  your API key again. After carrying out an approved action with your own tools, mark it completed.{% else %}Your key
+  can't decide here; on the server: <code>netsentinel responses approve|reject ID --note "…"</code>{% endif %}</p>
+  <div class="scroll"><table><thead><tr><th>Action</th><th>Target</th><th>Why</th><th>Impact</th><th>Status</th><th>Action ID</th></tr></thead><tbody>
+  {% for a in actions %}<tr>
+    <td>{{ a.action_type|replace('_', ' ') }}</td><td><code>{{ a.target }}</code></td>
+    <td>{{ a.rationale }}{% for c in a.cautions %}<div class="small muted">! {{ c }}</div>{% endfor %}</td>
+    <td>{% if a.disruptive %}<span class="status serious">▲ disruptive</span>{% else %}<span class="muted">observe only</span>{% endif %}</td>
+    <td>{{ a.status }}{% if a.decided_by %}<div class="small muted">{{ a.decided_by }}{% if a.decision_note %}: {{ a.decision_note }}{% endif %}</div>{% endif %}
+      {% if can_decide and a.status in ('proposed', 'approved') %}
+      <form method="post" action="/dashboard/actions/{{ a.action_id }}" class="decide-form" autocomplete="off">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <input name="note" required maxlength="500" placeholder="Note (why)">
+        <input name="api_key" type="password" required autocomplete="off" placeholder="Your API key">
+        {% if a.status == 'proposed' %}
+        <button type="submit" name="decision" value="approve">Approve</button>
+        <button type="submit" name="decision" value="reject">Reject</button>
+        {% else %}
+        <button type="submit" name="decision" value="complete">Mark completed</button>
+        {% endif %}
+      </form>
+      {% endif %}</td>
+    <td><code class="small">{{ a.action_id }}</code></td>
+  </tr>{% endfor %}
+  </tbody></table></div>
+</section>
+
+<section class="card">
+  <h2>Timeline</h2>
+  <table><thead><tr><th>When (UTC)</th><th>Actor</th><th>Event</th><th>Detail</th></tr></thead><tbody>
+  {% for e in timeline %}<tr><td>{{ e.at.strftime('%Y-%m-%d %H:%M:%S') }}</td><td>{{ e.actor }}</td><td>{{ e.event|replace('_', ' ') }}</td><td><code class="small">{{ e.detail|tojson }}</code></td></tr>{% endfor %}
+  </tbody></table>
+</section>
+{% endblock %}

@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}NetSentinel{% endblock %}</title>
+<link rel="stylesheet" href="/dashboard/static/dashboard.css">
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="/dashboard">NetSentinel</a>
+  {% if viewer %}
+  <form method="post" action="/dashboard/logout" class="who">
+    <a href="/dashboard/files/NetSentinel.pptx" class="small">Presentation (.pptx)</a>
+    <a href="/dashboard/files/NetSentinel.pdf" class="small">PDF</a>
+    <span>{{ viewer }}</span>
+    <button type="submit">Sign out</button>
+  </form>
+  {% endif %}
+</header>
+<main>{% block body %}{% endblock %}</main>
+{% block scripts %}{% endblock %}
+</body>
+</html>

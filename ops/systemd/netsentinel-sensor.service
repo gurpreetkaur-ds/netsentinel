@@ -1,0 +1,42 @@
+# Live sensor: captures this host's traffic on enp1s0 as flow metadata (never payloads) and sends it to
+# the local API. Installed by ops/systemd/enable-sensor.sh.
+[Unit]
+Description=NetSentinel live sensor (flow capture)
+After=network-online.target netsentinel-api.service wall-proxy@netsentinel.service
+Wants=netsentinel-api.service
+
+[Service]
+Type=simple
+User=linuxuser
+SupplementaryGroups=wall-netsentinel-clients
+WorkingDirectory=/home/linuxuser/netsentinel
+ExecStart=/home/linuxuser/netsentinel/.venv/bin/netsentinel sensor --interface enp1s0
+Restart=on-failure
+RestartSec=10
+# The only privilege: open a raw packet socket. Not root, no other capabilities.
+AmbientCapabilities=CAP_NET_RAW
+CapabilityBoundingSet=CAP_NET_RAW
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=read-only
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+RestrictRealtime=true
+LockPersonality=true
+RemoveIPC=true
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK AF_PACKET
+UMask=0077
+MemoryMax=1G
+
+[Install]
+WantedBy=multi-user.target

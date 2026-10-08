@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Sign in · NetSentinel{% endblock %}
+{% block body %}
+<section class="card login">
+  <h1>Sign in</h1>
+  <p class="muted">Use an API key with the <code>events:read</code> scope. The key is checked once; your browser then keeps only a signed session cookie for 8 hours.</p>
+  {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+  <form method="post" action="/dashboard/login" autocomplete="off">
+    <label for="api_key">API key</label>
+    <input id="api_key" name="api_key" type="password" required spellcheck="false" autocomplete="off">
+    <button type="submit">Sign in</button>
+  </form>
+</section>
+{% endblock %}
