@@ -100,7 +100,7 @@ def run(*, hours: float, owner_ips: tuple[str, ...], host_ips: tuple[str, ...], 
                           "flagged_share_unlabelled": float((p[lab == "unlabelled"] > t).mean())
                           if (lab == "unlabelled").any() else None})
         report["operating_curve"] = curve
-        report["note"] = (f"{int(benign.sum())} benign flows: an FPR budget below ~{1 / benign.sum():.1%} "
+        report["note"] = (f"{int(benign.sum())} benign flows: an FPR budget below ~{1 / benign.sum():.2%} "
                           "cannot be measured yet; let the sensor collect longer.")
     out = ROOT / "artifacts" / "calibration"
     out.mkdir(parents=True, exist_ok=True)
