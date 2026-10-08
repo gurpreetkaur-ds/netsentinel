@@ -103,3 +103,23 @@ Data: 26,343 inbound flows: 19,932 scan (2,111 sources), 2,359 SSH brute force (
   site), e.g. successful page loads followed by static assets, from sources never firewall-blocked
   and never failing SSH logins. With tens of benign sources, the cross-source test above becomes
   meaningful.
+
+## Benign labels from web access logs: not enough visitors (2026-10-08)
+
+Checked whether web access logs could supply the missing benign diversity (aggregates only):
+
+* Apache (`/var/log/apache2/access.log`, since 2026-10-07 18:00): 107 distinct IPs, 1,361 requests.
+  26 IPs requested scanner-style paths (`/.env`, `/wp-*`, `/phpmyadmin`, …), 25 used bot or tool user
+  agents. Only **1** IP behaved like a real browser (page plus its assets, browser UA, never
+  firewall-blocked, never failing SSH, not the owner).
+* Esports site (`storage/logs/serve.log`): request lines carry no client IP, and the current server's
+  output isn't written there. Not usable. Resumate logs errors only.
+
+With the owner's two addresses that makes 3 benign sources against ~2,400 attacking ones. **This host
+has almost no legitimate inbound visitors**: unsolicited inbound traffic is nearly all hostile, and the
+firewall already blocks most of it. A local supervised model can't be validated here, so no labelling
+feature was built.
+
+Where the approach would work: a network with real users, e.g. a sensor in front of an application
+that has traffic, or a corporate segment. There, access logs or authenticated sessions give hundreds
+of benign sources, and `netsentinel.ml.local_sensor`'s cross-source test applies unchanged.
