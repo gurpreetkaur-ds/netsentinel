@@ -85,3 +85,10 @@ its registration.
 * `docs/live-sensor.md`: live capture, flow-meter fixes, calibration against host logs, why alerting is off
 * `docs/security-review.md`: security review findings and fixes
 * `docs/e2e-validation.md`: end-to-end validation of the live system
+
+## License
+
+MIT, see [LICENSE](LICENSE). Bundled third-party code keeps its own license: Chart.js
+(`netsentinel/api/static/chart.umd.min.js`, MIT). The CICIDS-2017 data (Canadian Institute for
+Cybersecurity) and its corrected version (Engelen et al., 2021) are not included; download them from their
+publishers under their terms.
