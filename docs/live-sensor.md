@@ -57,3 +57,24 @@ false cases and Claude investigations. The sensor keeps collecting in shadow mod
    features come from one tool.
 3. Then add a per-source alert threshold (human-approved, like model activation) and start the sensor
    with `--alert`.
+
+## 24-hour calibration (2026-10-08)
+
+`netsentinel calibrate --hours 24`: 29,764 flows (2,918 benign, 19,253 scan, 2,350 SSH brute force,
+5,243 unlabelled). ROC-AUC attack vs benign **0.92** (0.95 on the first 2 h).
+
+| Benign false-alarm budget | Scan flows caught | SSH-guessing flows caught |
+|---|---|---|
+| validated threshold (p ≥ 0.000016) | 97% (at 32% false alarms) | 100% |
+| 10% | 60% | 97% |
+| 5% | 40% | 56% |
+| 1% | 20% | 7% |
+
+**Conclusion: the CICIDS-2017-trained model is not fit for alerting on this server**, at any threshold.
+It was trained on 2017 lab traffic measured by the Java flow meter; this is an internet-facing host
+measured by the Python port. The sensor stays in shadow mode. Live alerting needs a model trained on
+features from this sensor (see "Path to live alerting").
+
+Caveat on the labels: "scan" means *any* flow from an address the firewall blocked at some point, so it
+includes that address's probes of open ports. Some of those look like ordinary handshakes. Benign
+labels cover only this host's own connections and the owner's IPs.
