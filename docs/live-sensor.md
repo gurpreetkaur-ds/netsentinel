@@ -78,3 +78,28 @@ features from this sensor (see "Path to live alerting").
 Caveat on the labels: "scan" means *any* flow from an address the firewall blocked at some point, so it
 includes that address's probes of open ports. Some of those look like ordinary handshakes. Benign
 labels cover only this host's own connections and the owner's IPs.
+
+## Local model experiment (2026-10-08)
+
+`python -m netsentinel.ml.local_sensor`: a detector trained on the sensor's own inbound flows (per-flow
++ window features, same flow meter as live) with the weak labels above. Evaluated across sources: the
+owner's two addresses go to different folds and attackers are split by IP, so each test uses a benign
+source and attackers the model never saw. Nothing was registered or deployed.
+
+Data: 26,343 inbound flows: 19,932 scan (2,111 sources), 2,359 SSH brute force (305 sources),
+**473 benign from only 2 sources (the owner)**, 4,577 unlabelled.
+
+| Held-out benign source | ROC-AUC (local) | ROC-AUC (v2 lab model, same test) | At 1% false alarms: scans / SSH guessing caught |
+|---|---|---|---|
+| owner address A (trained on B, 75 benign flows) | 0.99 | 0.59 | 92% / 73% |
+| owner address B (trained on A, 398 benign flows) | 0.94 | 0.87 | 46% / 37% |
+
+* Training on the sensor's own features ranks this host's traffic far better than the lab model.
+* It is **not deployable**: results swing widely with which owner address is held out, because benign
+  traffic comes from two sources. The model largely learns "looks like the owner", and no threshold
+  can be trusted.
+* What would fix it is **benign diversity**, not more attacks. Candidate weak labels: web visitors
+  whose sessions look like real use in the web servers' access logs (Apache, Resumate, the esports
+  site), e.g. successful page loads followed by static assets, from sources never firewall-blocked
+  and never failing SSH logins. With tens of benign sources, the cross-source test above becomes
+  meaningful.
