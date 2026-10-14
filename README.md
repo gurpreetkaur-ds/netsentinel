@@ -23,6 +23,25 @@ sensor / replay ─► 1 INGEST (API key) ─► 2-4 VALIDATE · NORMALIZE · EX
 | `presentation/NetSentinel.ipynb` | cleaned, runnable story of the project (reads saved results) |
 | `docs/` | model reports, agents, API, security review, end-to-end validation |
 
+## Screenshots
+
+The SOC console (`/dashboard`). Addresses of the server and its owner are replaced with documentation
+ranges. Counts are real: replayed CICIDS-2017 lab traffic and the live sensor, each labelled.
+
+**Security overview**: KPIs, threat activity, severity, categories, sources, incidents, health and recent actions.
+![Security overview](docs/screenshots/overview.png)
+
+**Ticket workspace with the AI Security Agent**: a real Claude investigation through read-only tools. It
+separates confirmed evidence from hypotheses, catches that the ticket's claim doesn't match the telemetry,
+and flags a prompt-injection attempt planted in the ticket text instead of following it.
+![AI investigation on a ticket](docs/screenshots/ticket-ai.png)
+
+| | |
+|---|---|
+| **Tickets**: filters, quick filters, SLA, AI status ![Tickets](docs/screenshots/tickets.png) | **Threat monitoring**: correlated alerts, untriaged queue ![Threat monitoring](docs/screenshots/threats.png) |
+| **AI Security Agent**: conversation, tool steps, capabilities ![AI Security Agent](docs/screenshots/ai-agent.png) | **Network map**: inventory zones and observed flows (demo inventory labelled) ![Network map](docs/screenshots/network.png) |
+| **Analytics**: MTTA/MTTR, SLA compliance, trends, AI feedback ![Analytics](docs/screenshots/analytics.png) | |
+
 ## Live deployment
 
 | Service | Purpose |
