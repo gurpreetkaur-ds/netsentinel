@@ -216,13 +216,13 @@ def decide(conn, action_id: str, *, approve: bool, actor: str, note: str, bus: b
     with conn.transaction():
         row = conn.execute(
             "UPDATE response_actions SET status = %s, decided_by = %s, decided_at = now(), decision_note = %s "
-            "WHERE action_id = %s AND status = 'proposed' RETURNING case_id, action_type, target",
+            "WHERE action_id = %s AND status = 'proposed' RETURNING case_id, action_type, target, ticket_id",
             (status, actor, note, action_id)).fetchone()
         if not row:
             raise ValueError(f"action {action_id} is not awaiting a decision")
-        bus.publish(conn, RESPONSE_DECIDED, {"case_id": str(row[0]), "action_id": action_id, "decision": status,
-                                             "actor": actor}, producer="human")
-    return {"case_id": row[0], "action_type": row[1], "target": row[2], "status": status}
+        bus.publish(conn, RESPONSE_DECIDED, {"case_id": row[0] and str(row[0]), "ticket_id": row[3],
+                                             "action_id": action_id, "decision": status, "actor": actor}, producer="human")
+    return {"case_id": row[0], "ticket_id": row[3], "action_type": row[1], "target": row[2], "status": status}
 
 
 def complete(conn, action_id: str, *, actor: str, note: str, bus: busmod.Bus | None = None) -> dict:
@@ -233,10 +233,11 @@ def complete(conn, action_id: str, *, actor: str, note: str, bus: busmod.Bus | N
         row = conn.execute(
             "UPDATE response_actions SET status = 'completed', completed_by = %s, completed_at = now(), "
             "decision_note = coalesce(decision_note || ' | ', '') || %s "
-            "WHERE action_id = %s AND status = 'approved' RETURNING case_id, action_type, target",
+            "WHERE action_id = %s AND status = 'approved' RETURNING case_id, action_type, target, ticket_id",
             (actor, note, action_id)).fetchone()
         if not row:
             raise ValueError(f"action {action_id} is not approved (or already completed)")
-        bus.publish(conn, RESPONSE_DECIDED, {"case_id": str(row[0]), "action_id": action_id, "decision": "completed",
-                                             "actor": actor}, producer="human")
-    return {"case_id": row[0], "action_type": row[1], "target": row[2], "status": "completed"}
+        bus.publish(conn, RESPONSE_DECIDED, {"case_id": row[0] and str(row[0]), "ticket_id": row[3],
+                                             "action_id": action_id, "decision": "completed", "actor": actor},
+                    producer="human")
+    return {"case_id": row[0], "ticket_id": row[3], "action_type": row[1], "target": row[2], "status": "completed"}

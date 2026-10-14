@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, empty %}
+{% block title %}Network Map{% endblock %}
+{% block body %}
+<div class="page-head">
+  <div>
+    <div class="crumbs"><a href="/dashboard">Overview</a><span class="sep">/</span><span>Network Map</span></div>
+    <h1>Network map</h1>
+    <p class="lede">Hosts and zones from the asset inventory, connected by real flows NetSentinel received. Hosts that aren't in the inventory appear as unknown hosts with their address. Nothing is inferred or invented.</p>
+  </div>
+  <div class="head-actions">
+    <nav class="seg" aria-label="Traffic source">
+      <a href="?source=replay&range={{ range }}" {% if source == 'replay' %}aria-current="true"{% endif %}>Lab replay</a>
+      <a href="?source=live&range={{ range }}" {% if source == 'live' %}aria-current="true"{% endif %}>Live sensor</a>
+      <a href="?source=all&range={{ range }}" {% if source == 'all' %}aria-current="true"{% endif %}>All</a>
+    </nav>
+    <nav class="seg" aria-label="Time range">{% for r in ("24h", "7d", "30d", "90d") %}<a href="?source={{ source }}&range={{ r }}" {% if r == range %}aria-current="true"{% endif %}>{{ r }}</a>{% endfor %}</nav>
+  </div>
+</div>
+{% if demo_inventory %}
+<div class="banner warn">{{ icon("info") }}<span><b>Sample inventory.</b> The assets and zones come from the published CICIDS-2017 lab layout (tagged <code>demo:cicids-2017-lab</code>), used with replayed lab traffic.
+  They do not describe a real network. Add real assets with <code>netsentinel assets add</code> and zones with <code>netsentinel zones add</code>.</span></div>
+{% endif %}
+{% if source == 'live' %}
+<div class="banner info">{{ icon("info") }}<span>Live sensor traffic is from this server only, in shadow mode (scored, not alerted). Few hosts send legitimate traffic here.</span></div>
+{% endif %}
+<div class="grid cols-main-side">
+  <div class="card">
+    <div class="card-head"><div><h2>Topology &amp; traffic</h2><div class="sub">{{ edges|length }} busiest connections · red = connections with attack detections · node rings show open-ticket risk</div></div>
+      <div class="legend"><span><i class="lg-asset"></i>Inventoried asset</span><span><i class="lg-unknown"></i>Unknown host</span><span><i class="lg-attack"></i>Attack traffic</span><span><i class="lg-risk"></i>Open high/critical ticket</span></div></div>
+    {% if edges or assets %}
+    <svg class="netmap" id="netmap" role="img" aria-label="Network map of hosts, zones and traffic flows" viewBox="0 0 1000 560" preserveAspectRatio="xMidYMid meet"></svg>
+    <p class="tiny faint">Select a node (click, or Tab then Enter) to see its details. Columns are network zones; hosts without a zone sit in “Unzoned”.</p>
+    {% else %}{{ empty("No hosts or traffic to draw", "Add assets, or choose another source or range.", "network") }}{% endif %}
+  </div>
+  <div class="stack">
+    <div class="card" id="node-detail" aria-live="polite">
+      <div class="card-head"><h2>Details</h2></div>
+      <p class="small faint">Select a node to see its role, zone, traffic and open tickets.</p>
+    </div>
+    <div class="card flush">
+      <div class="card-head"><div><h2>Zones</h2><div class="sub">Operator-defined network segments</div></div></div>
+      {% if zones %}<div class="table-wrap"><table><thead><tr><th>CIDR</th><th>Zone</th><th>Note</th></tr></thead><tbody>
+      {% for z in zones %}<tr><td class="mono small">{{ z.cidr }}</td><td>{{ z.zone }}</td><td class="small">{{ z.note }}{% if z.source.startswith('demo:') %} <span class="badge b-demo">demo</span>{% endif %}</td></tr>{% endfor %}
+      </tbody></table></div>{% else %}<div class="card-head"><p class="small faint">No zones defined.</p></div>{% endif %}
+    </div>
+    <div class="card flush">
+      <div class="card-head"><div><h2>Busiest connections</h2></div></div>
+      {% if edges %}<div class="table-wrap"><table><thead><tr><th>From → to</th><th class="num">Flows</th><th class="num">Attack</th></tr></thead><tbody>
+      {% for e in edges[:12] %}<tr><td class="mono small">{{ e.src }} → {{ e.dst }}</td><td class="num">{{ "{:,}".format(e.flows) }}</td><td class="num {{ 'overdue' if e.attacks else '' }}">{{ "{:,}".format(e.attacks) }}</td></tr>{% endfor %}
+      </tbody></table></div>{% else %}<div class="card-head"><p class="small faint">No traffic in range.</p></div>{% endif %}
+    </div>
+  </div>
+</div>
+<script type="application/json" id="net-data">{{ data|safe }}</script>
+{% endblock %}
+{% block scripts %}<script src="/dashboard/static/network.js"></script>{% endblock %}

@@ -1,0 +1,16 @@
+{% extends "bare.html" %}
+{% block title %}Sign in{% endblock %}
+{% block body %}
+<section class="card login-card">
+  <div class="brand"><span class="brand-mark">{{ icon("shield") }}</span><span>NetSentinel</span></div>
+  <div><h1>Sign in to the SOC console</h1>
+  <p class="muted small">Use an API key with the <code>events:read</code> permission. It is checked once; your browser then keeps only a signed, HttpOnly session cookie for 8 hours.</p></div>
+  {% if error %}<div class="banner error" role="alert">{{ icon("alert") }}<span>{{ error }}</span></div>{% endif %}
+  <form method="post" action="/dashboard/login" autocomplete="off" class="stack">
+    <label for="api_key">API key
+      <input id="api_key" name="api_key" type="password" required spellcheck="false" autocomplete="off" placeholder="nsk_…"></label>
+    <button class="btn primary" type="submit">{{ icon("lock") }} Sign in</button>
+  </form>
+  <p class="tiny faint">Roles come from the key's permissions: viewer (<code>events:read</code>), analyst (+<code>tickets:write</code>), approver (+<code>actions:decide</code>).</p>
+</section>
+{% endblock %}

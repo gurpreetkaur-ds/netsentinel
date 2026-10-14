@@ -1,0 +1,89 @@
+{% from "_macros.html" import icon %}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<title>{% block title %}NetSentinel{% endblock %} · NetSentinel</title>
+{% if csrf %}<meta name="csrf-token" content="{{ csrf }}">{% endif %}
+<script src="/dashboard/static/theme.js"></script>
+<link rel="stylesheet" href="/dashboard/static/dashboard.css">
+</head>
+<body>
+{% include "_icons.html" %}
+<a class="skip" href="#main">Skip to content</a>
+<div class="shell" id="shell">
+  <aside class="sidebar" id="sidebar" aria-label="Main navigation">
+    <a class="brand" href="/dashboard"><span class="brand-mark">{{ icon("shield") }}</span><span class="brand-text">NetSentinel</span></a>
+    {% set items = [
+      ("overview", "/dashboard", "overview", "Overview", None),
+      ("threats", "/dashboard/threats", "radar", "Threat Monitoring", None),
+      ("tickets", "/dashboard/tickets", "ticket", "Tickets", counts.open if counts else None),
+      ("agent", "/dashboard/agent", "sparkles", "AI Security Agent", None),
+      ("network", "/dashboard/network", "network", "Network Map", None),
+      ("analytics", "/dashboard/analytics", "chart", "Analytics", None),
+      ("reports", "/dashboard/reports", "report", "Reports", None)] %}
+    <div class="nav-label">Operations</div>
+    <ul class="nav">
+      {% for key, href, ic, text, n in items %}
+      <li><a href="{{ href }}" class="{{ 'ai' if key == 'agent' else '' }}" {% if active == key %}aria-current="page"{% endif %} title="{{ text }}">
+        {{ icon(ic) }}<span class="nav-text">{{ text }}</span>{% if n %}<span class="count" title="{{ n }} open">{{ n }}</span>{% endif %}</a></li>
+      {% endfor %}
+    </ul>
+    <div class="sidebar-foot">
+      <ul class="nav">
+        <li><a href="/dashboard/settings" {% if active == 'settings' %}aria-current="page"{% endif %} title="Settings">{{ icon("settings") }}<span class="nav-text">Settings</span></a></li>
+        <li><a href="#" class="collapse-btn" id="collapse" role="button" aria-label="Collapse sidebar" title="Collapse sidebar">{{ icon("panel") }}<span class="nav-text">Collapse</span></a></li>
+      </ul>
+    </div>
+  </aside>
+  <div class="main">
+    <header class="topbar">
+      <button class="icon-btn menu-btn" id="menu" aria-label="Open navigation" aria-controls="sidebar" aria-expanded="false">{{ icon("menu") }}</button>
+      <div class="search" role="search">
+        {{ icon("search") }}
+        <label class="sr-only" for="global-search">Search tickets, IPs, hosts and alerts</label>
+        <input id="global-search" type="search" placeholder="Search tickets, IPs, hosts, alerts…" autocomplete="off"
+               aria-controls="search-results" aria-expanded="false">
+        <kbd>/</kbd>
+        <div class="popover" id="search-results" role="listbox" hidden></div>
+      </div>
+      <div class="top-right">
+        {% if health %}
+        <a class="health-pill" href="/dashboard/settings#health" id="health-pill" title="{{ health.label }}">
+          <span class="pulse {{ health.state }}" aria-hidden="true"></span><span class="txt">{{ health.label }}</span></a>
+        {% endif %}
+        <div class="clock" aria-live="off"><span class="utc" id="clock-utc">{{ now|dt('%H:%M') if now else '' }}</span><span class="local" id="clock-local"></span></div>
+        <button class="icon-btn" id="theme-toggle" aria-label="Switch colour theme" title="Switch colour theme">{{ icon("sun") }}</button>
+        <div class="notif-wrap">
+          <button class="icon-btn" id="notif-btn" aria-label="Notifications" aria-haspopup="true" aria-expanded="false" aria-controls="notif-panel">
+            {{ icon("bell") }}<span class="dot" id="notif-dot" hidden></span></button>
+          <div class="popover notif-panel" id="notif-panel" hidden>
+            <div class="group">Notifications</div><div id="notif-list"><div class="empty small">Loading…</div></div>
+          </div>
+        </div>
+        {% if who %}
+        <div class="user">
+          <span class="avatar" aria-hidden="true">{{ who.initials }}</span>
+          <span class="who"><b title="{{ who.name }}">{{ who.name }}</b><span>{{ who.role }}</span></span>
+          <form method="post" action="/dashboard/logout"><button class="icon-btn" type="submit" aria-label="Sign out" title="Sign out">{{ icon("logout") }}</button></form>
+        </div>
+        {% endif %}
+      </div>
+    </header>
+    <main class="content" id="main" tabindex="-1">
+      {% if ok %}<div class="banner ok" role="status">{{ icon("check") }}<span>{{ ok }}</span></div>{% endif %}
+      {% if error %}<div class="banner error" role="alert">{{ icon("alert") }}<span>{{ error }}</span></div>{% endif %}
+      {% block body %}{% endblock %}
+    </main>
+  </div>
+</div>
+<dialog id="confirm-dialog" aria-labelledby="confirm-title">
+  <div class="dlg-head"><h2 id="confirm-title">Are you sure?</h2></div>
+  <div class="dlg-body"><p id="confirm-text" class="muted"></p></div>
+  <div class="dlg-foot"><button class="btn ghost" value="cancel" id="confirm-cancel">Cancel</button><button class="btn primary" id="confirm-ok">Confirm</button></div>
+</dialog>
+<script src="/dashboard/static/app.js"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

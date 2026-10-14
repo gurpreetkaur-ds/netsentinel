@@ -1,0 +1,49 @@
+{% macro icon(name, cls="") %}<svg class="icon {{ cls }}" aria-hidden="true"><use href="#i-{{ name }}"/></svg>{% endmacro %}
+
+{% macro sev(s) -%}
+{%- set glyph = {"critical": "alert", "high": "alert", "medium": "info", "low": "info", "info": "info"} -%}
+<span class="badge sev-{{ s }}">{{ icon(glyph.get(s, "info")) }}{{ (s or "–")|capitalize }}</span>
+{%- endmacro %}
+
+{% macro status(s) -%}<span class="badge st-{{ s }}">{{ s|label }}</span>{%- endmacro %}
+
+{% macro when(v, cls="") -%}
+{%- if v -%}<time class="{{ cls }}" datetime="{{ v|iso }}" title="{{ v|dt('%Y-%m-%d %H:%M:%S') }}">{{ v|dt }}</time>{%- else -%}<span class="faint">–</span>{%- endif -%}
+{%- endmacro %}
+
+{% macro sla(t) -%}
+{%- if t.status in ('resolved', 'closed') -%}
+  {%- if t.resolved_at and t.resolved_at <= t.sla_due_at -%}<span class="sla met">{{ icon("check", "sm") }} met</span>
+  {%- elif t.resolved_at -%}<span class="sla faint">{{ icon("x", "sm") }} missed</span>{%- else -%}<span class="faint">–</span>{%- endif -%}
+{%- elif t.overdue -%}<span class="sla overdue">{{ icon("alert", "sm") }} Overdue · {{ when(t.sla_due_at) }}</span>
+{%- else -%}<span class="sla">{{ icon("clock", "sm") }} {{ when(t.sla_due_at) }}</span>{%- endif -%}
+{%- endmacro %}
+
+{% macro ai_status(s) -%}
+{%- if s == 'completed' -%}<span class="badge b-ai">{{ icon("sparkles") }}Investigated</span>
+{%- elif s in ('queued', 'running') -%}<span class="badge b-ai"><span class="spinner" aria-hidden="true"></span>{{ s|capitalize }}</span>
+{%- elif s == 'failed' -%}<span class="badge b-bad">{{ icon("x") }}AI failed</span>
+{%- else -%}<span class="faint small">–</span>{%- endif -%}
+{%- endmacro %}
+
+{% macro empty(title, text="", ic="info") %}
+<div class="empty">{{ icon(ic) }}<b>{{ title }}</b>{% if text %}<span class="small">{{ text }}</span>{% endif %}</div>
+{% endmacro %}
+
+{% macro range_seg(current, base) -%}
+<nav class="seg" aria-label="Time range">{% for r in ("24h", "7d", "30d", "90d") %}<a href="{{ base }}range={{ r }}" {% if r == current %}aria-current="true"{% endif %}>{{ r }}</a>{% endfor %}</nav>
+{%- endmacro %}
+
+{% macro provenance(items) -%}
+{%- if items -%}
+<div class="row small faint" aria-label="Data sources">{{ icon("database", "sm") }} Data in range:
+{% for p in items %}<span class="badge {{ 'b-demo' if p.origin == 'replay' else 'b-outline' }}" title="{{ p.flows }} flows">{{ p.label }} · {{ "{:,}".format(p.flows) }}</span>{% endfor %}
+</div>
+{%- else -%}<div class="small faint">{{ icon("database", "sm") }} No flow data in this range.</div>{%- endif -%}
+{%- endmacro %}
+
+{% macro actor(a) -%}
+{%- if a and a.startswith('agent:') -%}<span title="{{ a }}">{{ a[6:]|capitalize }} agent</span>
+{%- elif a and a.startswith('human:') -%}<span title="{{ a }}">{{ a[6:].split('@')[0] }}</span>
+{%- else -%}{{ a or '–' }}{%- endif -%}
+{%- endmacro %}

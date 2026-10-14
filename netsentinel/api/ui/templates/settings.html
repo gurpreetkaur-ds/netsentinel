@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, sev, when, empty, actor %}
+{% block title %}Settings{% endblock %}
+{% block body %}
+<div class="page-head">
+  <div>
+    <div class="crumbs"><a href="/dashboard">Overview</a><span class="sep">/</span><span>Settings</span></div>
+    <h1>Settings</h1>
+    <p class="lede">Your access, workflow policies, integrations and system status. Server-side settings change through the <code>netsentinel</code> CLI on the server, where the operator's identity is their own login.</p>
+  </div>
+</div>
+<section class="grid cols-2">
+  <div class="card"><div class="card-head"><h2>Your access</h2><span class="badge b-outline">{{ who.role|capitalize }}</span></div>
+    <dl class="kv"><dt>Signed in as</dt><dd>{{ who.name }}</dd><dt>Key</dt><dd class="mono">{{ who.key_id }}</dd>
+      <dt>Permissions</dt><dd>{% for s in who.scopes %}<span class="badge b-outline">{{ s }}</span> {% endfor %}</dd>
+      <dt>Session ends</dt><dd>{{ when(session_expires) }}</dd>
+      <dt>Can</dt><dd class="small">Read everything{% if who.can_write %} · create and work tickets · ask the AI agent · accept AI suggestions{% endif %}{% if who.can_decide %} · approve, reject, simulate and complete response actions{% endif %}</dd></dl>
+    <p class="tiny faint">Grant a permission on the server: <code>netsentinel keys grant KEY_ID tickets:write</code>.</p></div>
+  <div class="card"><div class="card-head"><h2>Appearance</h2></div>
+    <p class="small">Dark is the default. The sun/moon button in the top bar switches to light; the choice is remembered in this browser only.</p>
+    <p class="small">Times are shown in <b>UTC</b>. The top bar also shows your local time.</p></div>
+</section>
+<section class="card flush"><div class="card-head"><div><h2>SLA policies</h2><div class="sub">Applied when a ticket is created or its severity changes</div></div></div>
+  <div class="table-wrap"><table><thead><tr><th>Severity</th><th>Priority</th><th class="num">Acknowledge within</th><th class="num">Resolve within</th></tr></thead><tbody>
+  {% for p in sla %}<tr><td>{{ sev(p.severity) }}</td><td>{{ p.priority }}</td><td class="num">{{ (p.ack_minutes * 60)|dur }}</td><td class="num">{{ (p.resolve_minutes * 60)|dur }}</td></tr>{% endfor %}
+  </tbody></table></div></section>
+
+<section class="grid cols-2">
+  <div class="card" id="integrations"><div class="card-head"><h2>Integrations</h2></div>
+    <ul class="health-list">
+      <li><span class="pulse good"></span><span>AI model<div class="tiny faint">Claude via the server's keyless login, no API key stored</div></span><span class="v mono small">{{ ai_model }}</span></li>
+      <li><span class="pulse good"></span><span>AI agent tools<div class="tiny faint">{{ tools|length }} read-only tools</div></span><span class="v small">{{ tools|join(', ') }}</span></li>
+      <li><span class="pulse warning"></span><span>Threat intelligence<div class="tiny faint">No provider configured (AbuseIPDB, VirusTotal, MISP)</div></span><span class="v"><span class="badge sev-medium">not configured</span></span></li>
+      <li><span class="pulse warning"></span><span>Remediation executors<div class="tiny faint">Firewall / EDR / IdP: none, so approved actions can only be simulated</div></span><span class="v"><span class="badge sev-medium">{{ executors|length }} configured</span></span></li>
+      <li><span class="pulse"></span><span>Ticket export to Jira / ServiceNow<div class="tiny faint">Not configured; CSV and Markdown exports are available</div></span><span class="v"><span class="badge b-outline">none</span></span></li>
+    </ul>
+    <p class="tiny faint">How to add integrations: <code>docs/soc-platform.md</code>.</p></div>
+  <div class="card" id="model"><div class="card-head"><h2>Detection model</h2></div>
+    {% if model %}<dl class="kv"><dt>Active model</dt><dd class="mono">{{ model.model_id }}</dd><dt>SHA-256</dt><dd class="mono">{{ model.sha }}…</dd>
+      <dt>Approved by</dt><dd>{{ model.approved_by }}</dd><dt>Activated</dt><dd>{{ when(model.activated_at) }}</dd>
+      <dt>Training data</dt><dd class="small">{{ (model.metrics.data or {}).source or '–' }}</dd></dl>
+    {% else %}<div class="banner error">{{ icon("alert") }}<span>No active model: scoring is paused.</span></div>{% endif %}</div>
+</section>
+
+<section class="grid cols-2">
+  <div class="card" id="health"><div class="card-head"><h2>System health</h2><span class="badge {{ 'b-good' if health.state == 'good' else 'sev-medium' if health.state == 'warning' else 'b-bad' }}">{{ health.label }}</span></div>
+    <ul class="health-list">{% for h in health["items"] %}<li><span class="pulse {{ h.state }}" aria-hidden="true"></span><span>{{ h.name }}</span><span class="sr-only">{{ h.state }}</span><span class="v">{{ h.value }}</span></li>{% endfor %}</ul></div>
+  <div class="card"><div class="card-head"><div><h2>Response action catalog</h2><div class="sub">The only actions that can ever be proposed; each is reversible</div></div></div>
+    <ul class="health-list">{% for k, s in actions.items() %}<li><span class="mono small">{{ k }}</span><span class="v small">{% if s.disruptive %}<span class="badge sev-high">disruptive</span>{% else %}<span class="badge b-outline">observe</span>{% endif %}</span></li>{% endfor %}</ul></div>
+</section>
+
+<section class="card flush"><div class="card-head"><div><h2>Team</h2><div class="sub">People with dashboard access (active keys)</div></div></div>
+  <div class="table-wrap"><table><thead><tr><th>Name</th><th>Role</th><th>Permissions</th><th>Last used</th></tr></thead><tbody>
+  {% for p in people %}<tr><td>{{ p.name }}</td><td>{{ p.role|capitalize }}</td><td>{% for s in p.scopes %}<span class="badge b-outline">{{ s }}</span> {% endfor %}</td><td class="small">{{ when(p.last_used_at) }}</td></tr>{% endfor %}
+  </tbody></table></div></section>
+
+{% if who.can_decide %}
+<section class="card flush" id="audit"><div class="card-head"><div><h2>Audit log</h2><div class="sub">Latest 50 state-changing actions (approvers only). Append-only in the database.</div></div></div>
+  {% if audit %}<div class="table-wrap"><table><thead><tr><th>When</th><th>Who</th><th>Action</th><th>Object</th><th>Client</th></tr></thead><tbody>
+  {% for a in audit %}<tr><td class="small">{{ when(a.at) }}</td><td class="small">{{ actor(a.actor) }}</td><td class="mono small">{{ a.action }}</td><td class="small">{{ a.object_type }} <span class="mono">{{ a.object_id|truncate(24) }}</span></td><td class="mono small">{{ a.client or '–' }}</td></tr>{% endfor %}
+  </tbody></table></div>{% else %}<div class="card-head">{{ empty("Nothing audited yet") }}</div>{% endif %}</section>
+{% endif %}
+{% endblock %}

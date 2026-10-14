@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, sev, empty, range_seg %}
+{% block title %}Analytics{% endblock %}
+{% block body %}
+<div class="page-head">
+  <div>
+    <div class="crumbs"><a href="/dashboard">Overview</a><span class="sep">/</span><span>Analytics</span></div>
+    <h1>Analytics</h1>
+    <p class="lede">Trends in threats, response performance and how the AI agent's suggestions are received. Metrics cover tickets created in the range.</p>
+  </div>
+  <div class="head-actions">{{ range_seg(range, "/dashboard/analytics?") }}</div>
+</div>
+
+<section class="kpis">
+  <div class="kpi a-teal"><span class="label">{{ icon("clock") }}Mean time to acknowledge</span><span class="value">{{ tm.mtta_s|dur }}</span><span class="foot">median {{ tm.mtta_p50|dur }} · {{ tm.acked }} of {{ tm.tickets }} acknowledged</span></div>
+  <div class="kpi a-teal"><span class="label">{{ icon("check") }}Mean time to resolve</span><span class="value">{{ tm.mttr_s|dur }}</span><span class="foot">median {{ tm.mttr_p50|dur }} · {{ tm.resolved }} resolved</span></div>
+  <div class="kpi a-{{ 'good' if tm.sla_rate and tm.sla_rate >= 0.9 else 'warn' }}"><span class="label">{{ icon("flag") }}Resolution SLA met</span>
+    <span class="value">{{ "%.0f%%"|format(100 * tm.sla_rate) if tm.sla_rate is not none else "–" }}</span><span class="foot">{{ tm.sla_met }} met · {{ tm.sla_missed }} missed (incl. open &amp; overdue)</span></div>
+  <div class="kpi a-{{ 'good' if tm.ack_rate and tm.ack_rate >= 0.9 else 'warn' }}"><span class="label">{{ icon("eye") }}Acknowledge SLA met</span>
+    <span class="value">{{ "%.0f%%"|format(100 * tm.ack_rate) if tm.ack_rate is not none else "–" }}</span><span class="foot">{{ tm.ack_met }} met · {{ tm.ack_missed }} missed</span></div>
+  <div class="kpi a-warn"><span class="label">{{ icon("refresh") }}Reopened incidents</span><span class="value">{{ tm.reopened }}</span><span class="foot">tickets reopened at least once</span></div>
+</section>
+{% if tm.tickets and tm.acked == 0 %}
+<div class="banner info">{{ icon("info") }}<span>Acknowledgement times exist only for tickets acknowledged since the ticket workflow was added. Older tickets were never acknowledged, so they count against the acknowledge SLA.</span></div>
+{% endif %}
+
+<section class="grid cols-2">
+  <figure class="card"><div class="card-head"><div><h2>Threat categories over time</h2><div class="sub">New alerts per day, by attack family</div></div></div>
+    <div class="chart-box tall"><canvas id="chart-family" role="img" aria-label="Alerts per day by family"></canvas></div>
+    <details class="table-view"><summary>Show as table</summary><div id="table-family"></div></details></figure>
+  <figure class="card"><div class="card-head"><div><h2>Ticket severity over time</h2><div class="sub">New tickets per day, by severity</div></div></div>
+    <div class="chart-box tall"><canvas id="chart-sev" role="img" aria-label="Tickets per day by severity"></canvas></div>
+    <details class="table-view"><summary>Show as table</summary><div id="table-sev"></div></details></figure>
+</section>
+
+<section class="grid cols-3">
+  <div class="card"><div class="card-head"><div><h2>Resolution time by severity</h2><div class="sub">Average, resolved tickets</div></div></div>
+    {% if resolution_by_sev %}<ul class="health-list">{% for s in ('critical', 'high', 'medium', 'low') %}{% for r in resolution_by_sev if r.severity == s %}
+      <li>{{ sev(s) }}<span class="v"><b>{{ r.avg_s|dur }}</b> · {{ r.n }} tickets</span></li>{% endfor %}{% endfor %}</ul>
+    {% else %}{{ empty("No resolved tickets in range") }}{% endif %}</div>
+  <div class="card"><div class="card-head"><div><h2>AI recommendations</h2><div class="sub">How analysts responded to the agent</div></div></div>
+    {% if ai %}<div class="chart-box short"><canvas id="chart-ai" role="img" aria-label="AI recommendations by outcome"></canvas></div>
+      <details class="table-view"><summary>Show as table</summary><div id="table-ai"></div></details>
+    {% else %}{{ empty("No AI recommendations yet", "They appear once analysts run AI investigations.", "sparkles") }}{% endif %}
+    <p class="tiny faint">{{ ai_runs.total }} AI requests · {{ ai_runs.completed }} completed · {{ ai_runs.failed }} failed{% if ai_runs.avg_s %} · avg {{ ai_runs.avg_s|dur }}, {{ "%.1f"|format(ai_runs.avg_tools or 0) }} tool calls{% endif %}</p></div>
+  <div class="card"><div class="card-head"><div><h2>False-positive trend</h2><div class="sub">Closure reasons recorded by analysts</div></div></div>
+    {% if closure %}<div class="chart-box short"><canvas id="chart-closure" role="img" aria-label="Closed tickets by closure reason"></canvas></div>
+      <details class="table-view"><summary>Show as table</summary><div id="table-closure"></div></details>
+      <p class="tiny faint">Only analyst-labelled closures count. Tickets closed before closure reasons existed show as “Other”.</p>
+    {% else %}{{ empty("No closed tickets in range", "False-positive rates need analyst closure labels.") }}{% endif %}</div>
+</section>
+<section class="card">
+  <div class="card-head"><div><h2>Response actions</h2><div class="sub">Proposals in range by outcome</div></div></div>
+  <div class="row">{% for s in ('proposed', 'approved', 'rejected', 'completed', 'cancelled') %}<span class="badge b-outline">{{ s }} · {{ actions.get(s, 0) }}</span>{% endfor %}</div>
+</section>
+<script type="application/json" id="chart-data">{{ chart_data|safe }}</script>
+<script type="application/json" id="page-meta">{{ {"range": range, "page": "analytics"}|tojson }}</script>
+{% endblock %}
+{% block scripts %}<script src="/dashboard/static/chart.umd.min.js"></script><script src="/dashboard/static/charts.js"></script>{% endblock %}

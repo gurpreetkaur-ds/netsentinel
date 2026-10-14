@@ -13,7 +13,8 @@ sensor / replay ─► 1 INGEST (API key) ─► 2-4 VALIDATE · NORMALIZE · EX
 | Where | What |
 |---|---|
 | `netsentinel/ml/` | data loading, feature schema, taxonomy, v0 reproduction, v1 hierarchical detector, v2 time-window features |
-| `netsentinel/api/` | ingest API (`/v1/…`, loopback) and read-only dashboard (`/dashboard`, HTTPS) |
+| `netsentinel/api/` | ingest API (`/v1/…`, loopback) and the SOC console (`/dashboard`, HTTPS): overview, threats, tickets, AI agent, network map, analytics, reports, settings |
+| `netsentinel/{tickets,assistant,remediation}.py` | ticket service and lifecycle, AI Security Agent (read-only tools), safe remediation (approval → simulation → verification); see `docs/soc-platform.md` |
 | `netsentinel/agents/` | detection, orchestrator, investigation, risk, response, ticket |
 | `netsentinel/{bus,registry,llm,wall,db}.py` | event bus, model registry + check, Claude client, Security Wall client |
 | `netsentinel/migrations/` | PostgreSQL schema (applied by `netsentinel migrate`) |
@@ -30,6 +31,7 @@ sensor / replay ─► 1 INGEST (API key) ─► 2-4 VALIDATE · NORMALIZE · EX
 | `netsentinel-detection` / `-orchestrator` / `-investigation` / `-risk` / `-response` / `-ticket` | the agents |
 | `netsentinel-sensor` | live capture of this server's traffic (shadow mode: scored, no alerts); see `docs/live-sensor.md` |
 | `netsentinel-dashboard` | `https://<domain>:8443/dashboard` (Let's Encrypt; firewall: owner IPs only) |
+| AI Security Agent | worker inside `netsentinel-investigation` (the only service allowed to run Claude) |
 
 Active model: **`netsentinel-v2`** (per-flow + per-source 60 s window features, with a per-flow fallback
 for flows that arrive without a timestamp or source IP). `netsentinel-v1` is retired and can be
@@ -51,7 +53,8 @@ Prefix server commands with `sg wall-netsentinel-clients -c '…'` from an inter
 |---|---|
 | Open tickets / one ticket | `netsentinel tickets list` · `netsentinel tickets show NS-000023` |
 | Decide on a proposed action | On the dashboard ticket page (needs a key with `actions:decide`; each decision re-asks for the key), or `netsentinel responses approve <id> --note "…"` (or `reject`) |
-| Allow a key to decide on the dashboard | `netsentinel keys grant <key_id> actions:decide` |
+| Allow a key to work tickets / decide on the dashboard | `netsentinel keys grant <key_id> tickets:write` · `… actions:decide` |
+| Upgrade to the SOC console (migration 0010) | `sudo bash ops/deploy/soc-upgrade.sh` (backup, migrate, restart, verify) |
 | Confirm you carried it out | `netsentinel responses complete <id> --note "…"` |
 | Close a ticket | `netsentinel tickets resolve|close NS-000023 --resolution "…"` |
 | API keys | `netsentinel keys list` · `keys register --key-id … --sha256 …` · `keys revoke <id> --reason "…"` |

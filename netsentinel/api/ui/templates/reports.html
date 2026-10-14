@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, sev, status, when, empty, actor %}
+{% block title %}Reports{% endblock %}
+{% block body %}
+<div class="page-head">
+  <div>
+    <div class="crumbs"><a href="/dashboard">Overview</a><span class="sep">/</span><span>Reports</span></div>
+    <h1>Reports</h1>
+    <p class="lede">Downloadable incident reports, AI investigation reports and ticket exports. Markdown files keep each section's provenance (telemetry, model output, analyst, AI agent). Every export is audited.</p>
+  </div>
+</div>
+<section class="grid cols-3">
+  <div class="card"><div class="card-head"><div><h2>Ticket export</h2><div class="sub">CSV of tickets with all fields (up to 5,000)</div></div></div>
+    <div class="stack">
+      <a class="btn" href="/dashboard/reports/tickets.csv">{{ icon("download", "sm") }}All tickets</a>
+      <a class="btn" href="/dashboard/reports/tickets.csv?status=active">{{ icon("download", "sm") }}Active tickets</a>
+      <a class="btn" href="/dashboard/reports/tickets.csv?quick=overdue">{{ icon("download", "sm") }}Overdue tickets</a>
+      <p class="tiny faint">Any filtered list can be exported from Tickets → Export CSV.</p></div></div>
+  <div class="card span-2"><div class="card-head"><div><h2>Presentation</h2><div class="sub">The NetSentinel project deck</div></div></div>
+    <div class="row"><a class="btn" href="/dashboard/files/NetSentinel.pptx">{{ icon("download", "sm") }}PowerPoint</a><a class="btn" href="/dashboard/files/NetSentinel.pdf">{{ icon("download", "sm") }}PDF</a></div></div>
+</section>
+<section class="grid cols-2">
+  <div class="card flush"><div class="card-head"><div><h2>Incident reports</h2><div class="sub">One Markdown report per ticket: overview, evidence, risk, AI findings, actions, timeline</div></div></div>
+    {% if recent %}<div class="table-wrap"><table><thead><tr><th>Ticket</th><th>Severity</th><th>Status</th><th>Updated</th><th></th></tr></thead><tbody>
+    {% for t in recent %}<tr><td><a class="tid" href="/dashboard/tickets/{{ t.ticket_id }}">{{ t.ticket_id }}</a><span class="desc">{{ t.title }}</span></td><td>{{ sev(t.severity) }}</td><td>{{ status(t.status) }}</td>
+      <td class="small">{{ when(t.updated_at) }}</td><td><a class="btn sm" href="/dashboard/reports/tickets/{{ t.ticket_id }}.md">{{ icon("download", "sm") }}.md</a></td></tr>{% endfor %}
+    </tbody></table></div>{% else %}<div class="card-head">{{ empty("No tickets yet") }}</div>{% endif %}</div>
+  <div class="card flush"><div class="card-head"><div><h2>AI investigation reports</h2><div class="sub">Structured findings with evidence references</div></div></div>
+    {% if runs %}<div class="table-wrap"><table><thead><tr><th>Request</th><th>Ticket</th><th>Finished</th><th></th></tr></thead><tbody>
+    {% for r in runs %}<tr><td class="small">{{ r.prompt|truncate(60) }}<div class="tiny faint">{{ actor(r.requested_by) }}</div></td>
+      <td>{% if r.ticket_id %}<a class="tid" href="/dashboard/tickets/{{ r.ticket_id }}">{{ r.ticket_id }}</a>{% else %}<span class="faint">–</span>{% endif %}</td>
+      <td class="small">{{ when(r.finished_at) }}</td><td><a class="btn sm" href="/dashboard/reports/runs/{{ r.run_id }}.md">{{ icon("download", "sm") }}.md</a></td></tr>{% endfor %}
+    </tbody></table></div>{% else %}<div class="card-head">{{ empty("No AI investigations yet", "", "sparkles") }}</div>{% endif %}</div>
+</section>
+{% endblock %}

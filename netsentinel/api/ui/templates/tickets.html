@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, sev, status, when, sla, ai_status, empty %}
+{% block title %}Tickets{% endblock %}
+{% macro sort_th(key, text, cls="") -%}
+  {%- set is = f.sort == key -%}
+  {%- set next = 'asc' if is and f.order == 'desc' else 'desc' -%}
+  <th class="{{ cls }}" {% if is %}aria-sort="{{ 'ascending' if f.order == 'asc' else 'descending' }}"{% endif %}>
+    <a href="{{ link(sort=key, order=next) }}" {% if is %}aria-sort="true"{% endif %}>{{ text }}{% if is %}{{ icon("up" if f.order == 'asc' else "down", "sm") }}{% endif %}</a></th>
+{%- endmacro %}
+{% block body %}
+<div class="page-head">
+  <div>
+    <div class="crumbs"><a href="/dashboard">Overview</a><span class="sep">/</span><span>Tickets</span></div>
+    <h1>Tickets</h1>
+    <p class="lede">Every incident, whether the detection pipeline raised it automatically or an analyst created it.</p>
+  </div>
+  <div class="head-actions">
+    <a class="btn" href="/dashboard/reports/tickets.csv?{{ raw|string if raw else '' }}">{{ icon("download", "sm") }}Export CSV</a>
+    {% if who.can_write %}<a class="btn primary" href="/dashboard/tickets/new">{{ icon("plus", "sm") }}New ticket</a>{% endif %}
+  </div>
+</div>
+
+<nav class="chips" aria-label="Quick filters">
+  <a class="chip" href="/dashboard/tickets" {% if not f.quick and not raw %}aria-current="true"{% endif %}>All</a>
+  {% for key, text in QUICK.items() %}
+  <a class="chip" href="/dashboard/tickets?quick={{ key }}" {% if f.quick == key %}aria-current="true"{% endif %}>{{ text }}</a>
+  {% endfor %}
+</nav>
+
+<section class="card">
+  <form class="filters" method="get" action="/dashboard/tickets">
+    {% if f.quick %}<input type="hidden" name="quick" value="{{ f.quick }}">{% endif %}
+    <label class="grow">Search<input name="q" value="{{ f.q }}" placeholder="ID, title, IP, asset or tag"></label>
+    <label>Severity<select name="severity"><option value="">Any</option>{% for s in SEVERITIES|reverse %}<option value="{{ s }}" {% if f.severity and s in f.severity and f.severity|length == 1 %}selected{% endif %}>{{ s|capitalize }}</option>{% endfor %}</select></label>
+    <label>Status<select name="status"><option value="">Any</option><option value="active" {% if status_values == ['active'] %}selected{% endif %}>Active (not resolved)</option>{% for s, t in STATUS_LABELS.items() %}<option value="{{ s }}" {% if status_values == [s] %}selected{% endif %}>{{ t }}</option>{% endfor %}</select></label>
+    <label>Category<select name="category"><option value="">Any</option>{% for c in CATEGORIES %}<option {% if c == f.category %}selected{% endif %}>{{ c }}</option>{% endfor %}</select></label>
+    <label>Assignee<select name="assignee"><option value="">Anyone</option><option value="__none__" {% if f.assignee == '__none__' %}selected{% endif %}>Unassigned</option>{% for a in analysts %}<option {% if a == f.assignee %}selected{% endif %}>{{ a }}</option>{% endfor %}</select></label>
+    <label>SLA<select name="sla"><option value="">Any</option><option value="overdue" {% if f.sla == 'overdue' %}selected{% endif %}>Overdue</option><option value="due_soon" {% if f.sla == 'due_soon' %}selected{% endif %}>Due within 4 h</option><option value="ok" {% if f.sla == 'ok' %}selected{% endif %}>Within SLA</option></select></label>
+    <label>Created from<input type="date" name="since" value="{{ f.since.strftime('%Y-%m-%d') if f.since else '' }}"></label>
+    <label>Created before<input type="date" name="until" value="{{ f.until.strftime('%Y-%m-%d') if f.until else '' }}"></label>
+    <input type="hidden" name="sort" value="{{ f.sort }}"><input type="hidden" name="order" value="{{ f.order }}">
+    <div class="row"><button class="btn primary" type="submit">{{ icon("search", "sm") }}Apply</button><a class="btn ghost" href="/dashboard/tickets">Reset</a></div>
+  </form>
+</section>
+
+<section class="card flush">
+  <div class="card-head"><div><h2>{{ QUICK.get(f.quick, "Tickets") }}</h2><div class="sub">{{ total }} ticket{{ '' if total == 1 else 's' }}</div></div></div>
+  {% if rows %}
+  <div class="table-wrap"><table>
+    <thead><tr>
+      {{ sort_th("id", "Ticket") }}{{ sort_th("title", "Title") }}{{ sort_th("severity", "Severity") }}{{ sort_th("category", "Category") }}
+      {{ sort_th("source", "Source → asset") }}{{ sort_th("assignee", "Assignee") }}{{ sort_th("status", "Status") }}
+      {{ sort_th("updated", "Updated") }}{{ sort_th("due", "SLA") }}<th>AI</th><th><span class="sr-only">Actions</span></th>
+    </tr></thead>
+    <tbody>{% for t in rows %}
+    <tr>
+      <td><a class="tid" href="/dashboard/tickets/{{ t.ticket_id }}">{{ t.ticket_id }}</a>{% if t.escalated %}<div>{{ icon("flag", "sm") }}<span class="tiny overdue">escalated</span></div>{% endif %}</td>
+      <td><a href="/dashboard/tickets/{{ t.ticket_id }}" class="title">{{ t.title }}</a><span class="desc">{{ t.description or ("Raised by the detection pipeline" if t.origin == 'detection' else "") }}</span></td>
+      <td>{{ sev(t.severity) }}</td>
+      <td class="small">{{ t.category }}</td>
+      <td class="small"><span class="mono">{{ t.source_ip or "–" }}</span><div class="faint">{{ t.affected_asset or t.dest_ip or "" }}</div></td>
+      <td class="small">{{ t.assignee or "Unassigned" }}</td>
+      <td>{{ status(t.status) }}{% if t.pending %}<div class="tiny faint">{{ t.pending }} action{{ '' if t.pending == 1 else 's' }} pending</div>{% endif %}</td>
+      <td class="small">{{ when(t.updated_at) }}<div class="tiny faint">opened {{ t.created_at|dt('%b %d') }}</div></td>
+      <td>{{ sla(t) }}</td>
+      <td>{{ ai_status(t.ai_status) }}</td>
+      <td class="nowrap">
+        <a class="btn sm ghost" href="/dashboard/tickets/{{ t.ticket_id }}" aria-label="Open {{ t.ticket_id }}">Open</a>
+        {% if who.can_write and t.status not in ('closed',) and t.assignee != who.name %}
+        <form method="post" action="/dashboard/tickets/{{ t.ticket_id }}/assign" class="inline-form">
+          <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="assignee" value="__me__">
+          <button class="btn sm ghost" type="submit" aria-label="Assign {{ t.ticket_id }} to me">Take</button></form>{% endif %}
+      </td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+  <nav class="pager" aria-label="Pages">
+    <span>Showing {{ (f.page - 1) * f.page_size + 1 }}–{{ [f.page * f.page_size, total]|min }} of {{ total }}</span>
+    <span class="row">
+      {% if f.page > 1 %}<a class="btn sm" href="{{ link(page=f.page - 1) }}">Previous</a>{% endif %}
+      <span>Page {{ f.page }} / {{ pages }}</span>
+      {% if f.page < pages %}<a class="btn sm" href="{{ link(page=f.page + 1) }}">Next</a>{% endif %}
+    </span>
+  </nav>
+  {% else %}{{ empty("No tickets match these filters", "Clear filters or choose another quick filter.", "ticket") }}{% endif %}
+</section>
+{% endblock %}

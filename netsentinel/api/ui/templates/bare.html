@@ -1,0 +1,15 @@
+{% from "_macros.html" import icon %}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<title>{% block title %}NetSentinel{% endblock %} · NetSentinel</title>
+<script src="/dashboard/static/theme.js"></script>
+<link rel="stylesheet" href="/dashboard/static/dashboard.css">
+</head>
+<body>
+{% include "_icons.html" %}
+<main class="login-wrap" id="main">{% block body %}{% endblock %}</main>
+</body>
+</html>

@@ -17,6 +17,7 @@
 
 import argparse
 import getpass
+import os
 import sys
 from datetime import datetime, timedelta, timezone
 
@@ -66,7 +67,8 @@ def main(argv=None) -> int:
     for verb in ("approve", "reject", "activate"):
         models.add_parser(verb).add_argument("model_id")
     agent = sub.add_parser("agent")
-    agent.add_argument("name", choices=["detection", "orchestrator", "investigation", "risk", "response", "ticket"])
+    agent.add_argument("name", choices=["detection", "orchestrator", "investigation", "risk", "response", "ticket",
+                                       "assistant"])
     resp = sub.add_parser("responses", help="human review of proposed response actions").add_subparsers(
         dest="action", required=True)
     resp.add_parser("list").add_argument("--all", action="store_true", help="include decided actions")
@@ -382,7 +384,7 @@ def _tickets(conn, a) -> int:
 def _run_agent(a) -> int:
     import logging
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
-    pool = db.make_pool(max_size=4)
+    pool = db.make_pool(max_size=6)
     try:
         if a.name == "detection":
             from .agents.detection import DetectionAgent
@@ -401,10 +403,18 @@ def _run_agent(a) -> int:
             from .agents.risk import RiskAgent
             agent = RiskAgent(pool)
             once = lambda: {"assessed": agent.process()}
+        elif a.name == "assistant":
+            from .assistant import AssistantWorker
+            agent = AssistantWorker(pool)
+            once = lambda: {"answered": agent.process()}
         else:
             from .agents.investigation import InvestigationAgent
             agent = InvestigationAgent(pool)
             once = lambda: {"investigated": agent.process()}
+            if not a.once and os.environ.get("NETSENTINEL_ASSISTANT", "on") != "off":
+                # The AI Security Agent shares this service: it is the only one allowed to start Claude.
+                from .assistant import start_in_background
+                start_in_background(pool, agent.stop_event)
         if a.once:
             print(once())
         else:

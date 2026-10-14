@@ -19,7 +19,7 @@ from datetime import datetime
 import psycopg
 from psycopg.types.json import Jsonb
 
-SCOPES = frozenset({"ingest:write", "events:read", "actions:decide"})
+SCOPES = frozenset({"ingest:write", "events:read", "tickets:write", "actions:decide"})
 KEY_RE = re.compile(r"^nsk_([0-9a-f]{12})_([A-Za-z0-9_-]{43})$")
 KEY_ID_RE = re.compile(r"^[0-9a-f]{12}$")
 DIGEST_RE = re.compile(r"^[0-9a-f]{64}$")

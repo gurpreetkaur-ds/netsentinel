@@ -136,6 +136,8 @@ def create_app(pool: ConnectionPool | None = None, *, dashboard_only: bool = Fal
     @app.exception_handler(HTTPException)
     async def http_error(request: Request, exc: HTTPException):
         code, message = exc.detail if isinstance(exc.detail, tuple) else ("error", str(exc.detail))
+        if code == "redirect":
+            return RedirectResponse(exc.headers["Location"], status_code=303)
         if request.url.path.startswith("/dashboard") and "text/html" in request.headers.get("accept", ""):
             return dashboard.error_page(request, exc.status_code, message)
         return _error(exc.status_code, code, message, request, exc.headers)

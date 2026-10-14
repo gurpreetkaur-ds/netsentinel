@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, sev, status, when %}
+{% block title %}New ticket{% endblock %}
+{% block body %}
+<div class="page-head">
+  <div>
+    <div class="crumbs"><a href="/dashboard/tickets">Tickets</a><span class="sep">/</span><span>New</span></div>
+    <h1>{% if form.case_id or case %}Create a ticket from an alert{% else %}New ticket{% endif %}</h1>
+    <p class="lede">The ticket gets an ID automatically. Its SLA follows the severity policy unless you set a due date.</p>
+  </div>
+</div>
+{% if case %}
+<div class="banner info">{{ icon("radar") }}<span>Alert <span class="mono">{{ case.case_id[:8] }}</span>: {{ case.family or "Unnamed" }} from <span class="mono">{{ case.src_ip }}</span>,
+  {{ case.flow_count }} flows{% if case.severity %}, risk {{ case.score }}/100 ({{ case.severity }}){% endif %}. The fields below are prefilled from the alert.</span></div>
+{% endif %}
+{% if duplicates %}
+<div class="banner warn" role="alert">{{ icon("alert") }}<div>
+  <b>Possible duplicates.</b> These active tickets have the same source and category (or the same alert):
+  <ul>{% for d in duplicates %}<li><a class="tid" href="/dashboard/tickets/{{ d.ticket_id }}">{{ d.ticket_id }}</a> {{ d.title }} · {{ d.status|label }} · {{ when(d.created_at) }}</li>{% endfor %}</ul>
+  To create the ticket anyway, tick "Create anyway" below and submit again.</div></div>
+{% endif %}
+<form class="card" method="post" action="/dashboard/tickets" autocomplete="off">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <input type="hidden" name="case_id" value="{{ form.case_id or (case.case_id if case else '') }}">
+  <div class="form-grid">
+    <label class="full">Title <span class="hint">required, up to 300 characters</span>
+      <input name="title" required maxlength="300" value="{{ form.title or '' }}"></label>
+    <label>Severity
+      <select name="severity" required>{% for s in SEVERITIES|reverse %}<option value="{{ s }}" {% if (form.severity or 'medium') == s %}selected{% endif %}>{{ s|capitalize }}</option>{% endfor %}</select></label>
+    <label>Category
+      <select name="category" required>{% for c in CATEGORIES %}<option {% if (form.category or 'Other') == c %}selected{% endif %}>{{ c }}</option>{% endfor %}</select></label>
+    <label class="full">Description
+      <textarea name="description" maxlength="5000" rows="4" placeholder="What happened, how it was noticed, what is at stake.">{{ form.description or '' }}</textarea></label>
+    <label>Source IP<input name="source_ip" value="{{ form.source_ip or '' }}" inputmode="decimal" placeholder="e.g. 203.0.113.7"></label>
+    <label>Destination IP<input name="dest_ip" value="{{ form.dest_ip or '' }}" inputmode="decimal"></label>
+    <label>Affected asset<input name="affected_asset" maxlength="200" value="{{ form.affected_asset or '' }}" placeholder="host name or service"></label>
+    <label>Tags <span class="hint">comma-separated, e.g. vpn, phishing:wave-3</span><input name="tags" value="{{ form.tags or '' }}"></label>
+    <label>Assignee
+      <select name="assignee"><option value="__none__">Unassigned</option><option value="__me__" {% if form.assignee == '__me__' %}selected{% endif %}>Me ({{ who.name }})</option>
+      {% for a in analysts if a != who.name %}<option {% if form.assignee == a %}selected{% endif %}>{{ a }}</option>{% endfor %}</select></label>
+    <label>Due date (UTC) <span class="hint">optional; default from the SLA policy</span><input type="datetime-local" name="due_at" value="{{ form.due_at or '' }}"></label>
+    <label class="full">Evidence <span class="hint">log lines, alert metadata, links; kept as untrusted text</span>
+      <textarea name="evidence_notes" maxlength="10000" rows="5" class="mono">{{ form.evidence_notes or '' }}</textarea></label>
+    {% if duplicates %}<label class="check full"><input type="checkbox" name="confirm_duplicate" value="yes"> Create anyway (it is not a duplicate)</label>{% endif %}
+  </div>
+  <hr class="sep">
+  <div class="row"><button class="btn primary" type="submit">{{ icon("plus", "sm") }}Create ticket</button><a class="btn ghost" href="/dashboard/tickets">Cancel</a>
+    <span class="small faint">You can add files after the ticket is created.</span></div>
+</form>
+{% endblock %}

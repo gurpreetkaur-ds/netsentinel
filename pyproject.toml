@@ -35,7 +35,7 @@ build-backend = "setuptools.build_meta"
 include = ["netsentinel*"]
 
 [tool.setuptools.package-data]
-netsentinel = ["migrations/*.sql", "api/templates/*.html", "api/static/*"]
+netsentinel = ["migrations/*.sql", "api/ui/templates/*.html", "api/ui/static/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

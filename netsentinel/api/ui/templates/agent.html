@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, sev, status, when, empty, actor %}
+{% block title %}AI Security Agent{% endblock %}
+{% block body %}
+<div class="page-head">
+  <div>
+    <div class="crumbs"><a href="/dashboard">Overview</a><span class="sep">/</span><span>AI Security Agent</span></div>
+    <h1>AI Security Agent</h1>
+    <p class="lede">An investigation assistant that reads NetSentinel's data through a fixed set of read-only tools. It recommends; analysts decide. Ticket text, logs and intel are treated as untrusted data, never as instructions.</p>
+  </div>
+</div>
+
+<section class="kpis" aria-label="AI agent usage, last 30 days">
+  <div class="kpi a-ai"><span class="label">{{ icon("sparkles") }}AI requests · 30 d</span><span class="value">{{ stats.runs }}</span><span class="foot"><b>{{ stats.completed }}</b> completed · <b>{{ stats.failed }}</b> failed</span></div>
+  <div class="kpi a-good"><span class="label">{{ icon("check") }}Recommendations accepted</span><span class="value">{{ stats.accepted }}</span><span class="foot">applied by analysts</span></div>
+  <div class="kpi"><span class="label">{{ icon("x") }}Rejected / dismissed</span><span class="value">{{ stats.rejected }}</span><span class="foot">feedback on the agent's quality</span></div>
+</section>
+
+<div class="grid cols-main-side">
+  <section class="card flush ai-card agent" aria-label="Conversation" id="agent-panel">
+    <div class="agent-head"><span class="orb">{{ icon("sparkles") }}</span>
+      <div class="grow-1"><h2>Investigation workspace</h2><div class="small faint">Pick a ticket for context, or ask about an IP address without one</div></div>
+      <label class="sr-only" for="agent-ticket">Ticket in scope</label>
+      <select id="agent-ticket" class="ticket-picker">
+        <option value="">No ticket (general question)</option>
+        {% for r in recent %}<option value="{{ r.ticket_id }}" {% if r.ticket_id == selected %}selected{% endif %}>{{ r.ticket_id }} · {{ r.severity }} · {{ r.title|truncate(48) }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="agent-log" id="agent-log" aria-live="polite">
+      <div class="msg agent-msg"><div class="answer">Choose a ticket and ask me to investigate it, or ask something like “Check 172.16.0.1”. I'll show each tool I use, cite the evidence, and label findings as confirmed, hypothesis or unknown.</div></div>
+    </div>
+    {% if who.can_write %}
+    <div class="prompts" id="agent-prompts">
+      {% for p in ["Investigate this ticket", "Explain this alert", "Find related events", "Check this IP", "Create a remediation plan"] %}<button type="button" data-prompt="{{ p }}">{{ p }}</button>{% endfor %}
+    </div>
+    <form class="agent-input" id="agent-form">
+      <label class="sr-only" for="agent-input">Message the AI agent</label>
+      <textarea id="agent-input" rows="1" maxlength="2000" placeholder="Ask the agent…"></textarea>
+      <button class="btn ai" type="submit" aria-label="Send">{{ icon("send", "sm") }}</button>
+    </form>
+    {% else %}<p class="small faint agent-input">Your key can read AI results but not start AI requests (needs <code>tickets:write</code>).</p>{% endif %}
+  </section>
+
+  <div class="stack">
+    <div class="card">
+      <div class="card-head"><div><h2>Capabilities</h2><div class="sub">Tools the agent may call (max {{ max_tool_calls }} per request)</div></div></div>
+      <ul class="health-list">
+        {% for name, spec in tools.items() %}
+        <li><span class="pulse good" aria-hidden="true"></span><span><span class="mono small">{{ name }}</span><div class="tiny faint">{{ spec[1]|truncate(110) }}</div></span><span class="v"><span class="badge b-good">read-only</span></span></li>
+        {% endfor %}
+        <li><span class="pulse warning" aria-hidden="true"></span><span><span class="small">External threat intelligence</span><div class="tiny faint">AbuseIPDB / VirusTotal / MISP: not configured. Reputation lookups report “unavailable”, never “clean”.</div></span><span class="v"><span class="badge sev-medium">unavailable</span></span></li>
+        <li><span class="pulse warning" aria-hidden="true"></span><span><span class="small">Remediation execution</span><div class="tiny faint">The agent can only recommend. Approved actions run as simulations because no firewall/EDR integration is configured.</div></span><span class="v"><span class="badge sev-medium">proposals only</span></span></li>
+        <li><span class="pulse" aria-hidden="true"></span><span><span class="small">Shell, SQL, files, internet</span><div class="tiny faint">Not available to the model, by design.</div></span><span class="v"><span class="badge b-outline">none</span></span></li>
+      </ul>
+    </div>
+    <div class="card flush">
+      <div class="card-head"><div><h2>Recent AI requests</h2><div class="sub">Ticket investigations, plus your own general questions</div></div></div>
+      {% if runs %}<ul class="feed run-list">{% for r in runs %}
+        <li><span class="ico ai">{{ icon("sparkles", "sm") }}</span>
+          <div><div class="what">{% if r.ticket_id %}<a class="tid" href="/dashboard/tickets/{{ r.ticket_id }}#ai">{{ r.ticket_id }}</a> · {% endif %}{{ r.prompt|truncate(60) }}</div>
+            <div class="meta"><span class="badge {{ 'b-ai' if r.status == 'completed' else 'b-bad' if r.status == 'failed' else 'b-outline' }}">{{ r.status }}</span>
+              {{ actor(r.requested_by) }} · {{ r.tool_calls }} tools · {{ r.findings }} findings · {{ r.recs }} recs
+              {% if r.status == 'completed' %} · <a href="/dashboard/agent?run={{ r.run_id }}{% if r.ticket_id %}&ticket={{ r.ticket_id }}{% endif %}">open</a> · <a href="/dashboard/reports/runs/{{ r.run_id }}.md">report</a>{% endif %}</div></div>
+          {{ when(r.created_at) }}</li>{% endfor %}</ul>
+      {% else %}<div class="card-head">{{ empty("No AI requests yet", "", "sparkles") }}</div>{% endif %}
+    </div>
+  </div>
+</div>
+<script type="application/json" id="page-meta">{{ {"ticket_id": selected or None, "can_write": who.can_write, "open_run": open_run or None, "page": "agent"}|tojson }}</script>
+{% endblock %}
+{% block scripts %}<script src="/dashboard/static/agent.js"></script>{% endblock %}

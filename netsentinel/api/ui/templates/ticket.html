@@ -1,0 +1,447 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, sev, status, when, sla, ai_status, empty, actor %}
+{% block title %}{{ t.ticket_id }}{% endblock %}
+{% macro hidden(ret="") %}<input type="hidden" name="csrf" value="{{ csrf }}">{% if ret %}<input type="hidden" name="return" value="{{ ret }}">{% endif %}{% endmacro %}
+{% macro tl_icon(e) -%}
+{%- if e.kind == 'ai' or e.actor.startswith('agent:assistant') -%}ai|sparkles
+{%- elif e.kind == 'comment' -%}human|message
+{%- elif e.kind == 'execution' -%}warn|flask
+{%- elif e.event in ('resolved', 'closed') -%}ok|check
+{%- elif e.event in ('escalated', 'severity_changed') -%}warn|flag
+{%- elif e.actor.startswith('human:') -%}human|user
+{%- else -%}|cpu{%- endif -%}
+{%- endmacro %}
+{% block body %}
+{% set active_t = t.status not in ('closed',) %}
+<div class="ticket-head">
+  <div class="crumbs"><a href="/dashboard/tickets">Tickets</a><span class="sep">/</span><span class="mono">{{ t.ticket_id }}</span></div>
+  <div class="title-row">
+    <h1>{{ t.title }}</h1>
+    <div class="row">{{ sev(t.severity) }}{{ status(t.status) }}<span class="badge b-outline">{{ t.priority }}</span>
+      {% if t.escalated %}<span class="badge sev-critical">{{ icon("flag") }}Escalated</span>{% endif %}
+      {% if t.needs_review %}<span class="badge sev-medium">{{ icon("eye") }}Review required</span>{% endif %}</div>
+  </div>
+  <div class="meta-strip">
+    <span class="mono"><b>{{ t.ticket_id }}</b></span>
+    <span>Owner <b>{{ t.assignee or "Unassigned" }}</b></span>
+    <span>Category <b>{{ t.category }}</b></span>
+    <span>Opened {{ when(t.created_at) }} by <b>{{ actor(t.created_by) }}</b></span>
+    <span>Updated {{ when(t.updated_at) }}</span>
+    <span>SLA {{ sla(t) }}</span>
+    {% if t.status == 'open' %}<span class="{{ 'overdue' if t.ack_overdue else '' }}">Ack due {{ when(t.ack_due_at) }}</span>{% elif t.acknowledged_at %}<span>Acknowledged {{ when(t.acknowledged_at) }}</span>{% endif %}
+    {% if t.reopen_count %}<span>Reopened <b>{{ t.reopen_count }}×</b></span>{% endif %}
+  </div>
+</div>
+
+<div class="actionbar" role="toolbar" aria-label="Ticket actions">
+  {% if who.can_write and active_t %}
+    {% if t.status == 'open' %}
+    <form method="post" action="/dashboard/tickets/{{ t.ticket_id }}/status">{{ hidden() }}<input type="hidden" name="to" value="acknowledged">
+      <button class="btn primary" type="submit">{{ icon("check", "sm") }}Acknowledge</button></form>
+    {% endif %}
+    {% if 'investigating' in transitions and t.status != 'resolved' %}
+    <form method="post" action="/dashboard/tickets/{{ t.ticket_id }}/status">{{ hidden() }}<input type="hidden" name="to" value="investigating">
+      <button class="btn" type="submit">{{ icon("search", "sm") }}Start investigating</button></form>
+    {% endif %}
+    {% if 'in_progress' in transitions %}
+    <form method="post" action="/dashboard/tickets/{{ t.ticket_id }}/status">{{ hidden() }}<input type="hidden" name="to" value="in_progress">
+      <button class="btn" type="submit">{{ icon("play", "sm") }}In progress</button></form>
+    {% endif %}
+    <details class="pop"><summary class="btn">{{ icon("user", "sm") }}Assign</summary>
+      <form class="pop-body" method="post" action="/dashboard/tickets/{{ t.ticket_id }}/assign">{{ hidden() }}
+        <label>Assignee<select name="assignee"><option value="__me__">Me ({{ who.name }})</option><option value="__none__">Unassigned</option>
+          {% for a in analysts if a != who.name %}<option {% if a == t.assignee %}selected{% endif %}>{{ a }}</option>{% endfor %}</select></label>
+        <button class="btn primary" type="submit">Save assignment</button></form></details>
+    <details class="pop"><summary class="btn">{{ icon("alert", "sm") }}Severity</summary>
+      <form class="pop-body" method="post" action="/dashboard/tickets/{{ t.ticket_id }}/severity" data-confirm="Change the severity? The SLA deadlines will be recalculated and the change is audited.">{{ hidden() }}
+        <label>New severity<select name="severity">{% for s in SEVERITIES|reverse %}<option value="{{ s }}" {% if s == t.severity %}selected{% endif %}>{{ s|capitalize }}</option>{% endfor %}</select></label>
+        <label>Reason <span class="hint">required, kept in the audit trail</span><textarea name="note" required maxlength="2000" rows="2"></textarea></label>
+        <button class="btn primary" type="submit">Change severity</button></form></details>
+    {% if not t.escalated and t.status != 'resolved' %}
+    <details class="pop"><summary class="btn">{{ icon("flag", "sm") }}Escalate</summary>
+      <form class="pop-body" method="post" action="/dashboard/tickets/{{ t.ticket_id }}/escalate" data-confirm="Escalate this incident? Escalation is recorded and shown to every analyst.">{{ hidden() }}
+        <label>Why escalate? <span class="hint">required</span><textarea name="note" required maxlength="2000" rows="2"></textarea></label>
+        <button class="btn danger" type="submit">Escalate</button></form></details>
+    {% endif %}
+    {% if 'resolved' in transitions %}
+    <a class="btn" href="#resolution" data-tab="resolution">{{ icon("check", "sm") }}Resolve</a>
+    {% endif %}
+    {% if t.status == 'resolved' %}
+    <details class="pop"><summary class="btn">{{ icon("refresh", "sm") }}Reopen</summary>
+      <form class="pop-body" method="post" action="/dashboard/tickets/{{ t.ticket_id }}/status" data-confirm="Reopen this ticket? It returns to Investigating and the reopen is counted.">{{ hidden() }}
+        <input type="hidden" name="to" value="investigating">
+        <label>Why reopen? <span class="hint">required</span><textarea name="note" required maxlength="2000" rows="2"></textarea></label>
+        <button class="btn primary" type="submit">Reopen</button></form></details>
+    {% endif %}
+  {% endif %}
+  <span class="spacer"></span>
+  {% if who.can_write and active_t %}<button class="btn ai" type="button" id="ask-ai" data-prompt="Investigate this ticket">{{ icon("sparkles", "sm") }}Investigate with AI</button>{% endif %}
+  <a class="btn ghost" href="/dashboard/reports/tickets/{{ t.ticket_id }}.md">{{ icon("download", "sm") }}Report</a>
+</div>
+
+<div class="grid cols-main-side">
+  <div class="stack">
+    <nav class="tabs" role="tablist" aria-label="Ticket sections">
+      <a href="#overview" role="tab" data-tab="overview">Overview</a>
+      <a href="#evidence" role="tab" data-tab="evidence">Evidence <span class="n">{{ attachments|length + (1 if case else 0) + related|length }}</span></a>
+      <a href="#timeline" role="tab" data-tab="timeline">Timeline <span class="n">{{ timeline|length }}</span></a>
+      <a href="#collab" role="tab" data-tab="collab">Collaboration <span class="n">{{ comments|length }}</span></a>
+      <a href="#ai" role="tab" data-tab="ai" class="ai">{{ icon("sparkles", "sm") }}AI investigation{% if recs|selectattr('status', 'equalto', 'proposed')|list %} <span class="n">{{ recs|selectattr('status', 'equalto', 'proposed')|list|length }}</span>{% endif %}</a>
+      <a href="#response" role="tab" data-tab="response">Response <span class="n">{{ actions|length }}</span></a>
+      <a href="#resolution" role="tab" data-tab="resolution">Resolution</a>
+    </nav>
+
+    {# ── Overview ─────────────────────────────────────────────────────────── #}
+    <section class="tab-panel" id="overview" role="tabpanel">
+      <div class="card">
+        <div class="card-head"><h2>Summary</h2>
+          {% if who.can_write and active_t %}<details class="pop right"><summary class="btn sm ghost">Edit details</summary>
+            <form class="pop-body" method="post" action="/dashboard/tickets/{{ t.ticket_id }}/edit">{{ hidden() }}
+              <label>Title<input name="title" required maxlength="300" value="{{ t.title }}"></label>
+              <label>Category<select name="category">{% for c in CATEGORIES %}<option {% if c == t.category %}selected{% endif %}>{{ c }}</option>{% endfor %}</select></label>
+              <label>Description<textarea name="description" maxlength="5000" rows="4">{{ t.description }}</textarea></label>
+              <label>Source IP<input name="source_ip" value="{{ t.source_ip or '' }}"></label>
+              <label>Destination IP<input name="dest_ip" value="{{ t.dest_ip or '' }}"></label>
+              <label>Affected asset<input name="affected_asset" maxlength="200" value="{{ t.affected_asset or '' }}"></label>
+              <label>Tags<input name="tags" value="{{ t.tags|join(', ') }}"></label>
+              <label>Due (UTC)<input type="datetime-local" name="sla_due_at" value="{{ t.sla_due_at.strftime('%Y-%m-%dT%H:%M') }}"></label>
+              <button class="btn primary" type="submit">Save</button></form></details>{% endif %}
+        </div>
+        {% if t.description %}<p class="wrap-any">{{ t.description }}</p>{% else %}<p class="faint">No description.</p>{% endif %}
+        <hr class="sep">
+        <dl class="kv">
+          <dt>Severity / priority</dt><dd>{{ sev(t.severity) }} {{ t.priority }}{% if t.severity_locked %} <span class="faint small">(set by an analyst)</span>{% endif %}</dd>
+          <dt>Status</dt><dd>{{ status(t.status) }}</dd>
+          <dt>Owner</dt><dd>{{ t.assignee or "Unassigned" }}</dd>
+          <dt>Source IP</dt><dd class="mono">{% if t.source_ip %}<a href="/dashboard/threats?range=90d&ip={{ t.source_ip }}">{{ t.source_ip }}</a>{% else %}–{% endif %}</dd>
+          <dt>Destination IP</dt><dd class="mono">{{ t.dest_ip or "–" }}</dd>
+          <dt>Affected asset</dt><dd>{{ t.affected_asset or "–" }}</dd>
+          <dt>Origin</dt><dd>{{ {"detection": "Detection pipeline (automatic)", "alert": "Created from an alert", "manual": "Created manually"}[t.origin] }}</dd>
+          <dt>Tags</dt><dd>{% for g in t.tags %}<span class="badge b-outline">{{ g }}</span> {% else %}–{% endfor %}</dd>
+          <dt>Created</dt><dd>{{ when(t.created_at) }}</dd>
+          <dt>SLA</dt><dd>{{ sla(t) }}</dd>
+          {% if t.duplicate_of %}<dt>Duplicate of</dt><dd><a class="tid" href="/dashboard/tickets/{{ t.duplicate_of }}">{{ t.duplicate_of }}</a></dd>{% endif %}
+        </dl>
+      </div>
+      <div class="grid cols-2">
+        <div class="card">
+          <div class="card-head"><h2>Affected assets</h2></div>
+          {% if assets %}<ul class="health-list">{% for a in assets %}
+            <li>{{ icon("server", "sm") }}<span><b>{{ a.name }}</b> <span class="mono small faint">{{ a.cidr }}</span>{% if a.source.startswith('demo:') %} <span class="badge b-demo">demo inventory</span>{% endif %}
+              <div class="small faint">{{ a.role }}</div></span><span class="v">criticality {{ a.criticality }}/5</span></li>{% endfor %}</ul>
+          {% else %}{{ empty("Not in the asset inventory", "Add assets with netsentinel assets add.") }}{% endif %}
+        </div>
+        <div class="card">
+          <div class="card-head"><h2>Risk</h2>{% if risk %}<span class="badge b-outline">RULES · {{ risk.rules_version }}</span>{% endif %}</div>
+          {% if risk %}<p><span class="kpi-inline">{{ risk.score }}/100</span> {{ sev(risk.severity) }}</p>
+            {% for r in risk.review_reasons %}<p class="small">{{ icon("alert", "sm") }} {{ r }}</p>{% endfor %}
+            <p class="small faint">Deterministic score from the risk rules; the LLM is never scored. Factors are under Evidence.</p>
+          {% else %}{{ empty("No automatic risk assessment", "Manual tickets are not risk-scored.") }}{% endif %}
+        </div>
+      </div>
+    </section>
+
+    {# ── Evidence ─────────────────────────────────────────────────────────── #}
+    <section class="tab-panel" id="evidence" role="tabpanel">
+      {% if case %}
+      <div class="card">
+        <div class="card-head"><div><h2>Alert</h2><div class="sub">Correlated detections behind this ticket</div></div><span class="badge b-outline">VERIFIED TELEMETRY</span></div>
+        <dl class="kv"><dt>Alert ID</dt><dd class="mono">{{ case.case_id }}</dd><dt>Family</dt><dd>{{ case.family or "Unnamed" }}</dd>
+          <dt>Source</dt><dd class="mono">{{ case.src_ip }}</dd><dt>Flows</dt><dd>{{ "{:,}".format(case.flow_count) }}</dd>
+          <dt>Window</dt><dd>{{ when(case.first_seen) }} → {{ when(case.last_seen) }}</dd><dt>Max p(attack)</dt><dd class="mono">{{ "%.4f"|format(case.max_p_attack) }}</dd></dl>
+      </div>
+      {% endif %}
+      {% if inv %}
+      <div class="grid cols-2">
+        <div class="card"><div class="card-head"><h2>Verified telemetry</h2><span class="badge b-outline">VERIFIED TELEMETRY</span></div><pre class="json">{{ inv.telemetry|tojson_pretty }}</pre></div>
+        <div class="card"><div class="card-head"><h2>Model output</h2><span class="badge b-outline">MODEL OUTPUT</span></div><pre class="json">{{ inv.model_output|tojson_pretty }}</pre></div>
+      </div>
+      {% endif %}
+      {% if risk %}
+      <div class="card flush">
+        <div class="card-head"><div><h2>Detection &amp; risk rules applied</h2><div class="sub">Each factor with its points and provenance</div></div></div>
+        <div class="table-wrap"><table><thead><tr><th>Factor</th><th class="num">Points</th><th>Reason</th><th>Provenance</th></tr></thead><tbody>
+        {% for f in risk.factors %}<tr><td>{{ f.factor|replace('_', ' ') }}</td><td class="num">{{ f.points }}</td><td class="small">{{ f.reason }}</td><td><span class="badge b-outline">{{ f.provenance }}</span></td></tr>{% endfor %}
+        </tbody></table></div>
+      </div>
+      {% endif %}
+      {% if inv %}
+      <div class="card">
+        <div class="card-head"><div><h2>Pipeline investigation</h2><div class="sub">{{ inv.llm_model or "no model" }} · status {{ inv.llm_status }} · {{ when(inv.created_at) }}</div></div><span class="badge b-ai">LLM ANALYSIS</span></div>
+        {% if inv.llm_status == 'guard_rejected' %}<div class="banner error">{{ icon("alert") }}<span>Rejected by the guard: the analysis mentioned facts not in the evidence. Do not rely on it.</span></div>{% endif %}
+        {% if inv.analysis %}
+          <p>{{ inv.analysis.summary }}</p>
+          {% set ma = inv.analysis.model_assessment %}
+          <p class="small"><b>Telemetry vs model verdict:</b> {{ ma.consistency|replace('_', ' ') }}. {{ ma.reasoning }}</p>
+          <div class="section-label">Observations</div>
+          <ul class="small">{% for o in inv.analysis.observations %}<li>{{ o.statement }} <span class="faint mono">[{{ o.evidence_refs|join(', ') }}]</span>{% if o.unsupported %} <span class="badge sev-medium">unsupported</span>{% endif %}</li>{% endfor %}</ul>
+        {% endif %}
+        <div class="section-label">Investigative next steps (RECOMMENDATION)</div>
+        <ul class="small">{% for s in (inv.recommendations or {}).get('next_steps', []) %}<li>{{ s }}</li>{% endfor %}</ul>
+      </div>
+      {% endif %}
+      {% if t.evidence_notes %}
+      <div class="card"><div class="card-head"><h2>Evidence notes</h2><span class="badge b-outline">ANALYST TEXT · untrusted</span></div><pre class="json">{{ t.evidence_notes }}</pre></div>
+      {% endif %}
+      <div class="card flush">
+        <div class="card-head"><div><h2>Related alerts</h2><div class="sub">Other alerts from this ticket's source or destination address</div></div></div>
+        {% if related %}<div class="table-wrap"><table><thead><tr><th>Family</th><th>Source</th><th class="num">Flows</th><th>Last seen</th><th>Ticket</th></tr></thead><tbody>
+        {% for r in related %}<tr><td>{{ r.family or "Unnamed" }}</td><td class="mono small">{{ r.src_ip }}</td><td class="num">{{ r.flow_count }}</td><td class="small">{{ when(r.last_seen) }}</td>
+          <td>{% if r.ticket_id %}<a class="tid" href="/dashboard/tickets/{{ r.ticket_id }}">{{ r.ticket_id }}</a>{% elif who.can_write %}<a class="btn sm" href="/dashboard/tickets/new?case_id={{ r.case_id }}">Create</a>{% else %}–{% endif %}</td></tr>{% endfor %}
+        </tbody></table></div>{% else %}{{ empty("No related alerts") }}{% endif %}
+      </div>
+      <div class="card">
+        <div class="card-head"><div><h2>Attachments</h2><div class="sub">Downloaded as files, never opened in the browser. Max 5 MB: .txt .log .csv .json .md .xml .yaml .pcap .pcapng .png .jpg .pdf</div></div></div>
+        {% if attachments %}<ul class="health-list">{% for a in attachments %}
+          <li>{{ icon("paperclip", "sm") }}<span><a href="/dashboard/tickets/{{ t.ticket_id }}/attachments/{{ a.attachment_id }}">{{ a.filename }}</a>
+            <div class="tiny faint mono">sha256 {{ a.sha256[:16] }}… · {{ "{:,}".format(a.size_bytes) }} B</div></span>
+            <span class="v small">{{ actor(a.uploaded_by) }} · {{ when(a.created_at) }}</span></li>{% endfor %}</ul>
+        {% else %}<p class="small faint">No files attached.</p>{% endif %}
+        {% if who.can_write and active_t %}
+        <div class="row" id="upload" data-ticket="{{ t.ticket_id }}">
+          <label class="sr-only" for="upload-file">Attach a file</label>
+          <input type="file" id="upload-file" accept=".txt,.log,.csv,.json,.md,.xml,.yaml,.yml,.pcap,.pcapng,.png,.jpg,.jpeg,.pdf">
+          <button class="btn" type="button" id="upload-btn">{{ icon("paperclip", "sm") }}Upload</button>
+          <span class="small faint" id="upload-status" role="status"></span>
+        </div>{% endif %}
+      </div>
+    </section>
+
+    {# ── Timeline ─────────────────────────────────────────────────────────── #}
+    <section class="tab-panel" id="timeline" role="tabpanel">
+      <div class="card">
+        <div class="card-head"><div><h2>Investigation timeline</h2><div class="sub">Every status change, comment, AI run, proposal, decision and execution, oldest first</div></div></div>
+        <ol class="timeline">{% for e in timeline %}
+          {% set ti = tl_icon(e).split('|') %}
+          <li><span class="node {{ ti[0] }}">{{ icon(ti[1]) }}</span>
+            <div><div class="head"><b>{{ actor(e.actor) }}</b>
+              {% if e.kind == 'comment' %}{{ 'added an internal note' if e.event == 'internal_note' else 'commented' }}{% if e.detail.ai_drafted %} <span class="badge b-ai">AI-drafted</span>{% endif %}
+              {% elif e.kind == 'ai' %}{{ EVENT_LABELS.get(e.event, e.event) }} <span class="badge b-ai">{{ e.detail.status }}</span>
+              {% elif e.kind == 'execution' %}{{ EVENT_LABELS.get(e.event, e.event) }} <span class="badge b-sim">{{ e.detail.mode|upper }}</span>
+              {% else %}{{ EVENT_LABELS.get(e.event, e.event|replace('_', ' ')) }}{% endif %}</div>
+              <div class="sub">{{ when(e.at) }}</div>
+              {% if e.kind == 'comment' %}<div class="body">{{ e.detail.body }}</div>
+              {% elif e.kind == 'ai' %}<div class="body">“{{ e.detail.prompt }}”</div>
+              {% elif e.event in ('status_changed', 'reopened', 'resolved', 'closed') %}<div class="body">{{ (e.detail.from or '')|label }} → {{ (e.detail.to or '')|label }}{% if e.detail.closure_reason %} · {{ CLOSURE_REASONS.get(e.detail.closure_reason) }}{% endif %}{% if e.detail.note %}: {{ e.detail.note }}{% endif %}</div>
+              {% elif e.event == 'assigned' %}<div class="body">{{ e.detail.get('from') or 'Unassigned' }} → {{ e.detail.get('to') or e.detail.get('assignee') or 'Unassigned' }}</div>
+              {% elif e.event == 'severity_changed' %}<div class="body">{{ e.detail.from }} → {{ e.detail.to }}: {{ e.detail.note }}</div>
+              {% elif e.event == 'escalated' %}<div class="body">{{ e.detail.note }}</div>
+              {% elif e.kind == 'action' %}<div class="body mono">{{ e.detail.action }} → {{ e.detail.target }}</div>
+              {% elif e.detail %}<div class="body mono tiny">{{ e.detail|tojson }}</div>{% endif %}
+            </div></li>
+        {% else %}<li>{{ empty("No events yet") }}</li>{% endfor %}</ol>
+      </div>
+    </section>
+
+    {# ── Collaboration ─────────────────────────────────────────────────────── #}
+    <section class="tab-panel" id="collab" role="tabpanel">
+      <div class="card">
+        <div class="card-head"><div><h2>Comments &amp; internal notes</h2><div class="sub">Internal notes are for the SOC team; both are kept permanently</div></div></div>
+        {% set top = comments|selectattr('parent_id', 'none')|list %}
+        <div class="stack">
+        {% for c in top %}
+          <div class="comment {{ 'internal' if c.kind == 'internal_note' else '' }}" id="c{{ c.comment_id }}">
+            <div class="who"><span class="avatar">{{ (c.author[6:] if c.author.startswith('human:') else c.author[6:] if c.author.startswith('agent:') else c.author)[:2]|upper }}</span><b>{{ actor(c.author) }}</b>
+              {% if c.kind == 'internal_note' %}<span class="badge sev-medium">internal note</span>{% endif %}{% if c.ai_drafted %}<span class="badge b-ai">AI-drafted</span>{% endif %}{{ when(c.created_at) }}</div>
+            <div class="text">{{ c.body }}</div>
+            {% for r in comments if r.parent_id == c.comment_id %}
+            <div class="comment reply {{ 'internal' if r.kind == 'internal_note' else '' }}"><div class="who"><b>{{ actor(r.author) }}</b>{% if r.kind == 'internal_note' %}<span class="badge sev-medium">internal</span>{% endif %}{{ when(r.created_at) }}</div><div class="text">{{ r.body }}</div></div>
+            {% endfor %}
+            {% if who.can_write and active_t %}
+            <details class="pop"><summary class="btn sm ghost">Reply</summary>
+              <form class="pop-body" method="post" action="/dashboard/tickets/{{ t.ticket_id }}/comments">{{ hidden("collab") }}
+                <input type="hidden" name="parent_id" value="{{ c.comment_id }}"><input type="hidden" name="kind" value="{{ c.kind }}">
+                <textarea name="body" required maxlength="5000" rows="3" aria-label="Reply"></textarea><button class="btn primary" type="submit">Reply</button></form></details>
+            {% endif %}
+          </div>
+        {% else %}{{ empty("No comments yet", "Start the discussion below.", "message") }}{% endfor %}
+        </div>
+        {% if who.can_write and active_t %}
+        <hr class="sep">
+        <form method="post" action="/dashboard/tickets/{{ t.ticket_id }}/comments" class="stack" id="comment-form">{{ hidden("collab") }}
+          <label>Add a comment<textarea name="body" id="comment-body" required maxlength="5000" rows="3" placeholder="Findings, questions, hand-over notes…"></textarea></label>
+          <div class="row"><label class="check"><input type="radio" name="kind" value="comment" checked> Comment</label>
+            <label class="check"><input type="radio" name="kind" value="internal_note"> Internal note</label>
+            <span class="spacer"></span><button class="btn primary" type="submit">{{ icon("send", "sm") }}Post</button></div>
+        </form>{% endif %}
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>Assignment history</h2></div>
+        {% if assignment_history %}<ul class="feed">{% for e in assignment_history %}<li><span class="ico human">{{ icon("user", "sm") }}</span>
+          <div><div class="what">{{ e.detail.get('from') or 'Unassigned' }} → <b>{{ e.detail.get('to') or e.detail.get('assignee') or 'Unassigned' }}</b></div><div class="meta">by {{ actor(e.actor) }}</div></div>{{ when(e.at) }}</li>{% endfor %}</ul>
+        {% else %}<p class="small faint">Never assigned.</p>{% endif %}
+      </div>
+    </section>
+
+    {# ── AI investigation ──────────────────────────────────────────────────── #}
+    <section class="tab-panel" id="ai" role="tabpanel">
+      {% if latest %}{% set r = latest.result %}
+      <div class="card ai-card">
+        <div class="card-head"><div><h2>AI investigation</h2><div class="sub">{{ latest.model }} · {{ when(latest.finished_at) }} · {{ latest.tool_calls }} tool calls · tools: {{ r.tools_used|join(', ') or 'none' }}</div></div>
+          <div class="row"><span class="badge b-ai">{{ icon("sparkles") }}AI AGENT · confidence {{ r.confidence }}</span>
+            <a class="btn sm ghost" href="/dashboard/reports/runs/{{ latest.run_id }}.md">{{ icon("download", "sm") }}Export</a></div></div>
+        {% if latest.guard_findings %}<div class="banner warn">{{ icon("alert") }}<div><b>Guard checks flagged {{ latest.guard_findings|length }} item(s).</b>
+          <ul class="small">{% for g in latest.guard_findings %}<li>{{ g.type|replace('_', ' ') }}: {{ g.action }}</li>{% endfor %}</ul></div></div>{% endif %}
+        <div class="section-label">Summary</div><p>{{ r.summary }}</p>
+        <div class="section-label">Why the alert fired</div><p>{{ r.why_triggered }}</p>
+        {% for cat, title, help in (("confirmed", "Confirmed evidence", "shown directly by tool output"), ("hypothesis", "Hypotheses", "inferred, not proven"), ("unknown", "Unknown", "open questions")) %}
+          {% set items = r.findings|selectattr('category', 'equalto', cat)|list %}
+          {% if items %}<div class="section-label">{{ title }} <span class="faint">· {{ help }}</span></div>
+          <div class="stack">{% for f in items %}
+            <div class="finding {{ cat }} {{ '' if f.supported else 'unsupported' }}"><div class="row">{{ sev(f.severity) }}<span class="badge b-outline">{{ f.confidence }} confidence</span>{% if not f.supported %}<span class="badge sev-medium">unsupported: verify</span>{% endif %}</div>
+              <div>{{ f.statement }}</div>{% if f.evidence_refs %}<div class="refs">{{ f.evidence_refs|join(' · ') }}</div>{% endif %}</div>{% endfor %}</div>{% endif %}
+        {% endfor %}
+        {% set aff = r.affected %}
+        {% if aff.hosts or aff.ips or aff.services or aff.iocs %}<div class="section-label">Affected</div>
+          <dl class="kv">{% for k in ('hosts', 'ips', 'services', 'iocs') if aff[k] %}<dt>{{ k|upper if k == 'iocs' else k|capitalize }}</dt><dd class="mono small">{{ aff[k]|join(', ') }}</dd>{% endfor %}</dl>{% endif %}
+        {% if r.alternative_explanations %}<div class="section-label">Alternative explanations</div><ul class="small">{% for x in r.alternative_explanations %}<li>{{ x }}</li>{% endfor %}</ul>{% endif %}
+        {% if r.missing_evidence %}<div class="section-label">Missing evidence</div><ul class="small">{% for x in r.missing_evidence %}<li>{{ x }}</li>{% endfor %}</ul>{% endif %}
+      </div>
+      {% else %}
+      <div class="card ai-card">{{ empty("No AI investigation yet", "Use “Investigate with AI” or ask the agent in the panel. It reads this ticket's evidence with read-only tools.", "sparkles") }}</div>
+      {% endif %}
+      <div class="card">
+        <div class="card-head"><div><h2>Recommendations</h2><div class="sub">From the AI agent. Accepting one applies it through the normal checks; remediation becomes a proposal that an approver must still approve.</div></div></div>
+        {% if recs %}<div class="stack" id="recs">{% for x in recs %}
+          <div class="rec {{ '' if x.status == 'proposed' else 'decided' }}" data-rec="{{ x.rec_id }}" data-kind="{{ x.kind }}">
+            <div class="rec-head"><span class="badge b-outline">P{{ x.priority }}</span><span class="badge b-ai">{{ x.kind|replace('_', ' ') }}</span><b>{{ x.title }}</b>
+              <span class="badge b-outline">{{ x.confidence }}</span>
+              {% if x.kind == 'severity_change' %}→ {{ sev(x.body.severity) }}{% endif %}
+              {% if x.kind == 'remediation' %}<span class="mono small">{{ x.body.action_type }} → {{ x.body.target }}</span>{% endif %}</div>
+            {% if x.rationale %}<div class="why">{{ x.rationale }}</div>{% endif %}
+            {% if x.evidence_refs %}<div class="tiny faint mono">evidence: {{ x.evidence_refs|join(' · ') }}</div>{% endif %}
+            {% if x.body.command %}<div class="codeblock"><pre><code>{{ x.body.command.code }}</code></pre><button class="btn sm copy" type="button" data-copy>{{ icon("copy", "sm") }}Copy</button></div>
+              <div class="tiny faint">{{ x.body.command.language }} · for analyst review. NetSentinel never runs commands.</div>{% endif %}
+            {% if x.body.text %}<div class="comment"><div class="text" data-draft="{{ x.kind }}">{{ x.body.text }}</div></div>{% endif %}
+            {% if x.status == 'proposed' and who.can_write and active_t %}
+            <div class="row"><button class="btn sm primary" type="button" data-decide="accept">{{ 'Post comment' if x.kind == 'comment_draft' else 'Use draft' if x.kind == 'resolution_draft' else 'Propose action' if x.kind == 'remediation' else 'Apply' if x.kind in ('severity_change', 'escalation') else 'Accept' }}</button>
+              <button class="btn sm" type="button" data-decide="reject">Reject</button><button class="btn sm ghost" type="button" data-decide="dismiss">Dismiss</button></div>
+            {% elif x.status != 'proposed' %}<div class="tiny faint">{{ x.status|capitalize }} by {{ actor(x.decided_by) }} · {{ when(x.decided_at) }}{% if x.decision_note %}: {{ x.decision_note }}{% endif %}</div>{% endif %}
+          </div>{% endfor %}</div>
+        {% else %}<p class="small faint">No recommendations yet.</p>{% endif %}
+      </div>
+      {% if runs %}
+      <div class="card flush"><div class="card-head"><h2>AI run history</h2></div>
+        <div class="table-wrap"><table><thead><tr><th>When</th><th>Request</th><th>By</th><th>Status</th><th class="num">Tools</th><th></th></tr></thead><tbody>
+        {% for x in runs|reverse %}<tr><td class="small">{{ when(x.created_at) }}</td><td class="small">{{ x.prompt|truncate(70) }}</td><td class="small">{{ actor(x.requested_by) }}</td>
+          <td><span class="badge {{ 'b-ai' if x.status == 'completed' else 'b-bad' if x.status == 'failed' else 'b-outline' }}">{{ x.status }}</span>{% if x.error %}<div class="tiny faint">{{ x.error|truncate(80) }}</div>{% endif %}</td>
+          <td class="num">{{ x.tool_calls }}</td><td>{% if x.status == 'completed' %}<a class="btn sm ghost" href="/dashboard/reports/runs/{{ x.run_id }}.md">Report</a>{% endif %}</td></tr>{% endfor %}
+        </tbody></table></div></div>
+      {% endif %}
+    </section>
+
+    {# ── Response ──────────────────────────────────────────────────────────── #}
+    <section class="tab-panel" id="response" role="tabpanel">
+      <div class="banner warn">{{ icon("lock") }}<span><b>Recommend-only.</b> NetSentinel never changes firewalls, hosts or accounts on its own. Approvers decide each action (re-entering their key);
+        {% if executors %}configured integrations run approved actions.{% else %}no remediation integration is configured, so “Simulate” only records what would be sent. <b>Simulated actions are not carried out.</b>{% endif %}</span></div>
+      <div class="card flush">
+        <div class="card-head"><div><h2>Response actions</h2><div class="sub">From the allowlisted catalog only; each is reversible</div></div></div>
+        {% if actions %}<div class="stack" id="actions-list">{% for a in actions %}
+          <div class="rec">
+            <div class="rec-head"><b>{{ a.action_type|replace('_', ' ')|capitalize }}</b><span class="mono small">→ {{ a.target }}</span>
+              {% if a.disruptive %}<span class="badge sev-high">{{ icon("alert") }}disruptive</span>{% else %}<span class="badge b-outline">observe only</span>{% endif %}
+              <span class="badge {{ 'sev-medium' if a.status == 'proposed' else 'b-good' if a.status in ('approved', 'completed') else 'b-outline' }}">{{ a.status }}</span>
+              {% if a.proposed_by.startswith('agent:assistant') %}<span class="badge b-ai">{{ icon("sparkles") }}AI-proposed</span>{% endif %}</div>
+            <div class="why">{{ a.rationale }}</div>
+            <div class="impact"><b>Exact request</b>
+              <dl class="kv"><dt>Action</dt><dd class="mono">{{ a.action_type }}</dd><dt>Target</dt><dd class="mono">{{ a.target }}</dd>
+                <dt>Parameters</dt><dd class="mono">{{ a.params|tojson }}</dd><dt>Expected impact</dt><dd>{{ ACTIONS[a.action_type].description if a.action_type in ACTIONS else '–' }}</dd>
+                <dt>Undo</dt><dd>{{ ACTIONS[a.action_type].undo if a.action_type in ACTIONS else '–' }}</dd>
+                <dt>Would do</dt><dd>{{ sim_steps.get(a.action_type, '')|replace('{target}', a.target)|replace('{hours}', (a.params.hours or 24)|string) }}</dd></dl>
+              {% for c in a.cautions %}<div class="small">{{ icon("alert", "sm") }} {{ c }}</div>{% endfor %}</div>
+            <div class="tiny faint">Proposed by {{ actor(a.proposed_by) }} · {{ when(a.proposed_at) }}{% if a.decided_by %} · {{ a.status }} by {{ actor(a.decided_by) }}{% if a.decision_note %}: “{{ a.decision_note }}”{% endif %}{% endif %}</div>
+            {% if who.can_decide and a.status in ('proposed', 'approved') and active_t %}
+            <form method="post" action="/dashboard/actions/{{ a.action_id }}" class="decide-form row" autocomplete="off"
+                  data-target="{{ a.target }}" data-action="{{ a.action_type|replace('_', ' ') }}" data-disruptive="{{ 'yes' if a.disruptive else 'no' }}">
+              <input type="hidden" name="csrf" value="{{ csrf }}">
+              <label class="grow">Note (why)<input name="note" required maxlength="500" placeholder="Required for the audit trail"></label>
+              <label>Your API key<input name="api_key" type="password" required autocomplete="off" placeholder="nsk_…"></label>
+              {% if a.status == 'proposed' %}
+              <button class="btn primary" type="submit" name="decision" value="approve">Approve</button>
+              <button class="btn" type="submit" name="decision" value="reject">Reject</button>
+              {% else %}
+              <button class="btn" type="submit" name="decision" value="simulate">{{ icon("flask", "sm") }}Simulate</button>
+              <button class="btn primary" type="submit" name="decision" value="complete">Mark completed</button>
+              {% endif %}
+              <button class="btn ghost" type="submit" name="decision" value="cancel">Cancel</button>
+            </form>
+            {% endif %}
+            {% for x in executions if x.action_id == a.action_id %}
+            <div class="banner {{ 'warn' if x.mode == 'simulation' else 'ok' if x.outcome == 'succeeded' else 'error' }}">{{ icon("flask" if x.mode == 'simulation' else "zap") }}
+              <div><b>{{ x.mode|upper }}</b> · {{ x.outcome }} · {{ when(x.started_at) }} · by {{ actor(x.requested_by) }} (approved by {{ actor(x.approved_by) }})
+                <div class="small">{{ x.result.message or x.result.would_do or '' }}</div>
+                <div class="small">Verification: <b>{{ x.verification }}</b>{% if x.verified_by %} by {{ actor(x.verified_by) }}: {{ x.verification_note }}{% endif %}</div>
+                {% if who.can_decide and x.verification == 'unverified' %}
+                <form method="post" action="/dashboard/executions/{{ x.execution_id }}/verify" class="row">{{ hidden() }}
+                  <input name="note" required maxlength="1000" placeholder="What did you check?" aria-label="Verification note">
+                  <button class="btn sm" name="result" value="verified" type="submit">Verified</button><button class="btn sm danger" name="result" value="failed" type="submit">Failed</button></form>{% endif %}
+              </div></div>
+            {% endfor %}
+          </div>{% endfor %}</div>
+        {% else %}<div class="card-head">{{ empty("No response actions proposed") }}</div>{% endif %}
+      </div>
+      {% if who.can_write and t.status not in ('resolved', 'closed') %}
+      <form class="card" method="post" action="/dashboard/tickets/{{ t.ticket_id }}/actions">{{ hidden("response") }}
+        <div class="card-head"><div><h2>Propose an action</h2><div class="sub">Creates a proposal for an approver; nothing runs</div></div></div>
+        <div class="form-grid">
+          <label>Action<select name="action_type">{% for k, s in ACTIONS.items() %}<option value="{{ k }}">{{ k|replace('_', ' ') }}{{ ' (disruptive)' if s.disruptive else '' }}</option>{% endfor %}</select></label>
+          <label>Target (IP address)<input name="target" required value="{{ t.source_ip or '' }}" inputmode="decimal"></label>
+          <label class="full">Rationale<textarea name="rationale" required maxlength="1000" rows="2"></textarea></label>
+          <label>Duration (hours, temporary actions)<input name="hours" type="number" min="1" max="72" value="24"></label>
+        </div><div class="row"><button class="btn" type="submit">{{ icon("plus", "sm") }}Propose</button></div>
+      </form>{% endif %}
+    </section>
+
+    {# ── Resolution ────────────────────────────────────────────────────────── #}
+    <section class="tab-panel" id="resolution" role="tabpanel">
+      {% if t.status in ('resolved', 'closed') %}
+      <div class="card">
+        <div class="card-head"><h2>{{ 'Closed' if t.status == 'closed' else 'Resolved' }}</h2>{{ status(t.status) }}</div>
+        <dl class="kv"><dt>Resolved</dt><dd>{{ when(t.resolved_at) }}</dd>{% if t.closure_reason %}<dt>Closure reason</dt><dd>{{ CLOSURE_REASONS[t.closure_reason] }}</dd>{% endif %}
+          <dt>Remediation performed</dt><dd>{% set done = actions|selectattr('status', 'equalto', 'completed')|list %}{% for a in done %}<div class="mono small">{{ a.action_type }} → {{ a.target }}</div>{% else %}None recorded{% endfor %}</dd>
+          <dt>Verification</dt><dd>{% for x in executions %}<div class="small">{{ x.mode }} {{ x.target }}: {{ x.verification }}</div>{% else %}None recorded{% endfor %}</dd></dl>
+        <div class="section-label">Resolution notes</div><div class="comment"><div class="text">{{ t.resolution or '–' }}</div></div>
+      </div>
+      {% endif %}
+      {% if who.can_write and t.status != 'closed' %}
+      <div class="grid cols-2">
+        {% if 'resolved' in transitions %}
+        <form class="card" method="post" action="/dashboard/tickets/{{ t.ticket_id }}/status">{{ hidden("resolution") }}<input type="hidden" name="to" value="resolved">
+          <div class="card-head"><div><h2>Resolve</h2><div class="sub">Record what was done and how it was verified</div></div></div>
+          <label>Resolution notes <span class="hint">required</span><textarea name="note" id="resolution-note" required maxlength="2000" rows="5" placeholder="Remediation performed, verification results, follow-ups."></textarea></label>
+          <div class="row"><button class="btn primary" type="submit">{{ icon("check", "sm") }}Resolve ticket</button></div>
+        </form>
+        {% endif %}
+        <form class="card" method="post" action="/dashboard/tickets/{{ t.ticket_id }}/status" data-confirm="Close this ticket? Closed tickets are final: they can't be edited, commented on or reopened.">{{ hidden("resolution") }}<input type="hidden" name="to" value="closed">
+          <div class="card-head"><div><h2>Close</h2><div class="sub">{{ 'Final step after resolution' if t.status == 'resolved' else 'Close without resolving (e.g. false positive or duplicate)' }}</div></div></div>
+          <label>Closure reason<select name="closure_reason">{% for k, v in CLOSURE_REASONS.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select></label>
+          <label>Duplicate of (for "Duplicate")<input name="duplicate_of" placeholder="NS-000123" pattern="NS-[0-9]{6}"></label>
+          <label>Note {% if t.status != 'resolved' %}<span class="hint">required when closing without resolving</span>{% endif %}<textarea name="note" maxlength="2000" rows="3" {% if t.status != 'resolved' %}required{% endif %}></textarea></label>
+          <div class="row"><button class="btn danger" type="submit">{{ icon("lock", "sm") }}Close ticket</button></div>
+        </form>
+      </div>
+      {% elif t.status != 'closed' %}<p class="faint">Your key can view this ticket but not change it.</p>{% endif %}
+    </section>
+  </div>
+
+  {# ── AI agent panel ─────────────────────────────────────────────────────── #}
+  <aside class="card flush ai-card agent" aria-label="AI Security Agent" id="agent-panel">
+    <div class="agent-head"><span class="orb">{{ icon("sparkles") }}</span><div><h2>AI Security Agent</h2><div class="small faint">Reads this ticket with read-only tools · never executes</div></div></div>
+    <div class="agent-log" id="agent-log" aria-live="polite">
+      <div class="msg agent-msg"><div class="answer">Ask about {{ t.ticket_id }}. I can explain the alert, find related events, check an IP against NetSentinel's history, and draft notes. I separate <b>confirmed</b> evidence from <b>hypotheses</b> and <b>unknowns</b>.</div></div>
+    </div>
+    {% if who.can_write and active_t %}
+    <div class="prompts" id="agent-prompts">
+      {% for p in ["Investigate this ticket", "Explain this alert", "Find related events", "Check this IP", "Create a remediation plan", "Draft a resolution note"] %}<button type="button" data-prompt="{{ p }}">{{ p }}</button>{% endfor %}
+    </div>
+    <form class="agent-input" id="agent-form">
+      <label class="sr-only" for="agent-input">Message the AI agent</label>
+      <textarea id="agent-input" rows="1" maxlength="2000" placeholder="Ask a follow-up question…"></textarea>
+      <button class="btn ai" type="submit" aria-label="Send">{{ icon("send", "sm") }}</button>
+    </form>
+    {% else %}<p class="small faint agent-input">{{ 'Closed tickets cannot be investigated.' if not active_t else 'Your key can read AI results but not start AI requests (needs tickets:write).' }}</p>{% endif %}
+  </aside>
+</div>
+<script type="application/json" id="page-meta">{{ {"ticket_id": t.ticket_id, "can_write": who.can_write and active_t, "conversation_id": (latest.conversation_id if latest else (runs[-1].conversation_id if runs else None)), "last_run": (runs[-1].run_id if runs else None), "source_ip": t.source_ip}|tojson }}</script>
+{% endblock %}
+{% block scripts %}<script src="/dashboard/static/agent.js"></script>{% endblock %}

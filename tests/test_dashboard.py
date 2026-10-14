@@ -44,7 +44,7 @@ def test_sign_in_sets_hardened_cookie_and_shows_overview(client, pool):
     cookie = r.headers["set-cookie"].lower()
     assert "httponly" in cookie and "samesite=strict" in cookie and "path=/dashboard" in cookie
     page = client.get("/dashboard")
-    assert page.status_code == 200 and "Open tickets" in page.text and "Awaiting your approval" in page.text
+    assert page.status_code == 200 and "Open tickets" in page.text and "awaiting approval" in page.text
     assert "<script>" not in page.text.replace('<script type="application/json" id="chart-data">', "")  # no inline JS
 
 
@@ -97,7 +97,8 @@ def test_static_is_allowlisted(client, name):
 
 
 def test_static_assets_served(client):
-    assert client.get("/dashboard/static/dashboard.js").headers["content-type"].startswith("text/javascript")
+    for name in ("app.js", "charts.js", "agent.js", "network.js", "theme.js"):
+        assert client.get(f"/dashboard/static/{name}").headers["content-type"].startswith("text/javascript")
     assert client.get("/dashboard/static/chart.umd.min.js").status_code == 200
 
 
@@ -165,7 +166,7 @@ def test_decisions_need_scope_csrf_and_the_same_key(client, pool, seeded):
     assert _form(client, url, decision="approve", note="x", api_key=reader, csrf=token).status_code == 403 # no scope
     assert _form(client, url, decision="approve", note="", api_key=decider, csrf=token).status_code == 422 # no note
     r = _form(client, url, decision="approve", note="verified scan", api_key=decider, csrf=token)
-    assert r.status_code == 303 and r.headers["location"] == f"/dashboard/tickets/{tid}"
+    assert r.status_code == 303 and r.headers["location"].startswith(f"/dashboard/tickets/{tid}?ok=decided")
     with pool.connection() as c:
         status, by, note = c.execute("SELECT status, decided_by, decision_note FROM response_actions WHERE action_id = %s",
                                      (aid,)).fetchone()

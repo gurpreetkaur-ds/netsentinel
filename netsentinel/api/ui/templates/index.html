@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, sev, status, when, empty, range_seg, provenance, actor %}
+{% block title %}Overview{% endblock %}
+{% block body %}
+{% set k = kpi %}
+<div class="page-head">
+  <div>
+    <div class="crumbs"><span>NetSentinel</span><span class="sep">/</span><span>Overview</span></div>
+    <h1>Security overview</h1>
+    <p class="lede">Detections, incidents and response work across the pipeline. Counts cover the selected range unless marked "now".</p>
+  </div>
+  <div class="head-actions">{{ range_seg(range, "/dashboard?") }}</div>
+</div>
+{{ provenance(prov) }}
+
+<section class="kpis" aria-label="Key indicators">
+  <a class="kpi a-crit" href="/dashboard/threats?range={{ range }}">
+    <span class="label">{{ icon("radar") }}Threats detected</span>
+    <span class="value">{{ "{:,}".format(k.alerts) }}<small>alerts</small></span>
+    <span class="foot"><span><b>{{ "{:,}".format(k.attack_flows) }}</b> attack flows</span>{% if k.shadow_attack_flows %}<span title="Live sensor in shadow mode: scored but not alerted"><b>{{ "{:,}".format(k.shadow_attack_flows) }}</b> shadow-mode</span>{% endif %}</span>
+  </a>
+  <a class="kpi a-crit" href="/dashboard/tickets?severity=critical&severity=high&status=active">
+    <span class="label">{{ icon("alert") }}Critical &amp; high · now</span>
+    <span class="value">{{ k.critical + k.high }}<small>open</small></span>
+    <span class="foot"><span><b>{{ k.critical }}</b> critical</span><span><b>{{ k.high }}</b> high</span></span>
+  </a>
+  <a class="kpi a-warn" href="/dashboard/tickets?quick=overdue">
+    <span class="label">{{ icon("ticket") }}Open tickets · now</span>
+    <span class="value">{{ k.open }}</span>
+    <span class="foot"><span class="{{ 'overdue' if k.overdue else '' }}"><b>{{ k.overdue }}</b> overdue</span><span><b>{{ k.approval }}</b> awaiting approval</span></span>
+  </a>
+  <a class="kpi a-teal" href="/dashboard/analytics?range={{ range }}">
+    <span class="label">{{ icon("clock") }}MTTA / MTTR</span>
+    <span class="value">{{ k.mtta_s|dur }}<small>/ {{ k.mttr_s|dur }}</small></span>
+    <span class="foot"><span>from {{ k.mtta_n }} acknowledged · {{ k.mttr_n }} resolved of {{ k.tickets_in_range }} tickets</span></span>
+  </a>
+  <a class="kpi a-{{ 'good' if health.state == 'good' else 'warn' if health.state == 'warning' else 'crit' }}" href="/dashboard/network">
+    <span class="label">{{ icon("server") }}System health</span>
+    <span class="value"><span class="pulse {{ health.state }}" aria-hidden="true"></span> {{ health.label }}</span>
+    <span class="foot"><span><b>{{ k.assets }}</b> monitored assets{% if k.demo_assets %} ({{ k.demo_assets }} demo){% endif %}</span><span><b>{{ k.zones }}</b> zones</span></span>
+  </a>
+</section>
+
+<section class="grid cols-main-side">
+  <figure class="card" aria-labelledby="t-activity">
+    <div class="card-head"><div><h2 id="t-activity">Threat activity</h2><div class="sub">Flows scored by the detector per interval. Click a point to open Threat Monitoring.</div></div></div>
+    <div class="chart-box tall"><canvas id="chart-activity" role="img" aria-label="Attack and benign flows over time"></canvas></div>
+    <details class="table-view"><summary>Show as table</summary><div id="table-activity"></div></details>
+  </figure>
+  <figure class="card" aria-labelledby="t-sev">
+    <div class="card-head"><div><h2 id="t-sev">Open tickets by severity</h2><div class="sub">Now · click a bar to filter tickets</div></div></div>
+    <div class="chart-box"><canvas id="chart-severity" role="img" aria-label="Open tickets by severity"></canvas></div>
+    <details class="table-view"><summary>Show as table</summary><div id="table-severity"></div></details>
+  </figure>
+</section>
+
+<section class="grid cols-3">
+  <div class="card">
+    <div class="card-head"><div><h2>Threat categories</h2><div class="sub">Alerts by attack family (model output)</div></div></div>
+    {% if families %}
+    <div class="bar-list">
+      {% set top = families[0].alerts %}
+      {% for f in families %}
+      <a class="bar-row" href="/dashboard/threats?range={{ range }}&family={{ f.family|urlencode }}">
+        <span>{{ f.family }}</span><span class="num faint">{{ f.alerts }} alerts · {{ "{:,}".format(f.flows) }} flows</span>
+        <span class="track"><span class="fill" data-pct="{{ (100 * f.alerts / top)|round(1) }}"></span></span></a>
+      {% endfor %}
+    </div>
+    {% else %}{{ empty("No alerts in this range", "Pick a longer range above.") }}{% endif %}
+  </div>
+  <div class="card span-2">
+    <div class="card-head"><div><h2>Top threat sources</h2><div class="sub">Source IPs with the most alerts in range</div></div>
+      <a class="btn sm ghost" href="/dashboard/threats?range={{ range }}">All alerts {{ icon("arrow", "sm") }}</a></div>
+    {% if sources %}
+    <div class="table-wrap"><table>
+      <thead><tr><th>Source IP</th><th>Families</th><th class="num">Alerts</th><th class="num">Flows</th><th class="num">Max risk</th><th>Last seen</th></tr></thead>
+      <tbody>{% for s in sources %}
+        <tr><td><a class="mono" href="/dashboard/threats?range={{ range }}&ip={{ s.ip }}">{{ s.ip }}</a>{% if s.asset %} <span class="badge b-outline">{{ s.asset }}</span>{% endif %}</td>
+          <td class="small">{{ s.families|join(", ") }}</td><td class="num">{{ s.alerts }}</td><td class="num">{{ "{:,}".format(s.flows) }}</td>
+          <td class="num">{{ s.risk if s.risk is not none else "–" }}</td><td class="small">{{ when(s.last_seen) }}</td></tr>
+      {% endfor %}</tbody></table></div>
+    {% else %}{{ empty("No threat sources in this range") }}{% endif %}
+  </div>
+</section>
+
+<section class="grid cols-2">
+  <div class="card flush">
+    <div class="card-head"><div><h2>Recent security incidents</h2><div class="sub">Latest correlated alerts</div></div></div>
+    {% if incidents %}
+    <div class="table-wrap"><table>
+      <thead><tr><th>Alert</th><th>Severity</th><th class="num">Flows</th><th>Last seen</th><th>Ticket</th></tr></thead>
+      <tbody>{% for c in incidents %}
+        <tr><td><span class="title">{{ c.family or "Unnamed" }} from <span class="mono">{{ c.src_ip or "unknown" }}</span></span></td>
+          <td>{% if c.severity %}{{ sev(c.severity) }}{% else %}<span class="faint small">not assessed</span>{% endif %}</td>
+          <td class="num">{{ "{:,}".format(c.flow_count) }}</td><td class="small">{{ when(c.last_seen) }}</td>
+          <td>{% if c.ticket_id %}<a class="tid" href="/dashboard/tickets/{{ c.ticket_id }}">{{ c.ticket_id }}</a>
+              {% elif who.can_write %}<a class="btn sm" href="/dashboard/tickets/new?case_id={{ c.case_id }}">{{ icon("plus", "sm") }}Ticket</a>
+              {% else %}<span class="faint">–</span>{% endif %}</td></tr>
+      {% endfor %}</tbody></table></div>
+    {% else %}{{ empty("No incidents yet") }}{% endif %}
+  </div>
+  <div class="card">
+    <div class="card-head"><div><h2>Latest ticket updates</h2><div class="sub">Timeline entries across all tickets</div></div></div>
+    {% if updates %}
+    <ul class="feed">{% for u in updates %}
+      <li><span class="ico {{ 'ai' if u.actor.startswith('agent:assistant') else 'human' if u.actor.startswith('human:') else '' }}">{{ icon("sparkles" if u.actor.startswith('agent:assistant') else "user" if u.actor.startswith('human:') else "cpu", "sm") }}</span>
+        <div><div class="what"><a class="tid" href="/dashboard/tickets/{{ u.ticket_id }}">{{ u.ticket_id }}</a> · {{ actor(u.actor) }} {{ EVENT_LABELS.get(u.event, u.event|replace('_', ' ')) }}</div>
+          <div class="meta">{{ u.title|truncate(80) }}</div></div>
+        {{ when(u.at) }}</li>
+    {% endfor %}</ul>
+    {% else %}{{ empty("No ticket activity yet") }}{% endif %}
+  </div>
+</section>
+
+<section class="grid cols-2">
+  <div class="card" id="health">
+    <div class="card-head"><div><h2>Network &amp; sensor health</h2><div class="sub">Live status of the pipeline</div></div><span class="badge {{ 'b-good' if health.state == 'good' else 'sev-medium' if health.state == 'warning' else 'b-bad' }}">{{ health.label }}</span></div>
+    <ul class="health-list">{% for h in health["items"] %}
+      <li><span class="pulse {{ h.state }}" aria-hidden="true"></span><span>{% if h.href %}<a href="{{ h.href }}">{{ h.name }}</a>{% else %}{{ h.name }}{% endif %}</span>
+        <span class="sr-only">{{ h.state }}</span><span class="v">{{ h.value }}</span></li>{% endfor %}</ul>
+  </div>
+  <div class="card">
+    <div class="card-head"><div><h2>Recent analyst &amp; AI agent actions</h2><div class="sub">From the audit log, AI runs and response decisions</div></div></div>
+    {% if activity %}
+    <ul class="feed">{% for a in activity %}
+      <li><span class="ico {{ 'ai' if a.src == 'ai' else 'human' }}">{{ icon("sparkles" if a.src == 'ai' else "user", "sm") }}</span>
+        <div><div class="what">{{ actor(a.actor) }} · <span class="mono small">{{ a.action }}</span></div><div class="meta">{{ a.object_type|replace('_', ' ') }} {{ a.object_id }}</div></div>
+        {{ when(a.at) }}</li>
+    {% endfor %}</ul>
+    {% else %}{{ empty("No analyst or AI actions recorded yet", "Actions taken in the console appear here.") }}{% endif %}
+  </div>
+</section>
+<script type="application/json" id="chart-data">{{ chart_data|safe }}</script>
+<script type="application/json" id="page-meta">{{ {"range": range}|tojson }}</script>
+{% endblock %}
+{% block scripts %}<script src="/dashboard/static/chart.umd.min.js"></script><script src="/dashboard/static/charts.js"></script>{% endblock %}

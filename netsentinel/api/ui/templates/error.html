@@ -1,0 +1,10 @@
+{% extends "bare.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block body %}
+<section class="card login-card">
+  <div class="brand"><span class="brand-mark">{{ icon("shield") }}</span><span>NetSentinel</span></div>
+  <h1>{{ title }}</h1>
+  <div class="banner error" role="alert">{{ icon("alert") }}<span>{{ message }}</span></div>
+  <div class="row"><a class="btn primary" href="/dashboard">Open the dashboard</a></div>
+</section>
+{% endblock %}
